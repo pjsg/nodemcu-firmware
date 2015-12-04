@@ -780,6 +780,7 @@ static int l_check_memlimit(lua_State *L, size_t needbytes) {
 }
 
 #define VERIFY_AND_MARK(p)    { lua_assert(((int *) p)[-1] >= 0); ((int *)p)[-1] = -((int *)p)[-1]; }
+#define FORCE_MOVE
 
 // We store the size requested in first int of the block
 static void *mov_realloc(void *ptr, size_t nsize) {
