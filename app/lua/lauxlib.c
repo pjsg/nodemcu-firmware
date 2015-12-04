@@ -779,6 +779,58 @@ static int l_check_memlimit(lua_State *L, size_t needbytes) {
   return (g->totalbytes >= limit) ? 1 : 0;
 }
 
+#define VERIFY_AND_MARK(p)    { lua_assert(((int *) p)[-1] >= 0); ((int *)p)[-1] = -((int *)p)[-1]; }
+
+// We store the size requested in first int of the block
+static void *mov_realloc(void *ptr, size_t nsize) {
+  size_t osize = 0;
+
+  // If ptr was 0, leave it that way
+  if (ptr) {
+    int *sizeptr = ((int *) ptr) - 1;
+    osize = (size_t) *sizeptr;
+  }
+
+  if (!nsize) {
+    if (ptr) {
+      VERIFY_AND_MARK(ptr);
+      memset(ptr, 0x55, osize);
+      c_free(((int *) ptr) - 1);
+    }
+    return NULL;
+  }
+
+  void *result;
+#ifdef FORCE_MOVE
+  result = (void *) c_realloc(0, nsize + sizeof(int));
+  if (!result) {
+#endif
+    result = (void *) c_realloc(ptr ? ((int *) ptr) - 1 : 0, nsize + sizeof(int));
+    if (!result) {
+      return NULL;
+    }
+    *((int *) result) = nsize;
+    return (void *) ((char *) result + sizeof(int));
+#ifdef FORCE_MOVE
+  }
+
+  *((int *) result) = nsize;
+  result = ((int *) result) + 1;
+  if (nsize < osize) {
+    osize = nsize;
+  }
+  if (ptr) {
+    memcpy(result, ptr, osize);
+    VERIFY_AND_MARK(ptr);
+    memset(ptr, 0x77, osize);
+    c_free(((int *) ptr) - 1);
+  }
+  return result;
+#endif
+}
+
+#define DO_REALLOC(p, n)	mov_realloc(p, n)
+
 
 static void *l_alloc (void *ud, void *ptr, size_t osize, size_t nsize) {
   lua_State *L = (lua_State *)ud;
@@ -786,7 +838,7 @@ static void *l_alloc (void *ud, void *ptr, size_t osize, size_t nsize) {
   void *nptr;
 
   if (nsize == 0) {
-    c_free(ptr);
+    mov_realloc(ptr, 0);
     return NULL;
   }
   if (L != NULL && (mode & EGC_ALWAYS)) /* always collect memory if requested */
@@ -798,10 +850,11 @@ static void *l_alloc (void *ud, void *ptr, size_t osize, size_t nsize) {
     if(G(L)->memlimit > 0 && (mode & EGC_ON_MEM_LIMIT) && l_check_memlimit(L, nsize - osize))
       return NULL;
   }
-  nptr = (void *)c_realloc(ptr, nsize);
+  lua_assert(!ptr || ((int *) ptr)[-1] == osize);
+  nptr = (void *)DO_REALLOC(ptr, nsize);
   if (nptr == NULL && L != NULL && (mode & EGC_ON_ALLOC_FAILURE)) {
-    luaC_fullgc(L); /* emergency full collection. */
-    nptr = (void *)c_realloc(ptr, nsize); /* try allocation again */
+    luaC_fullgc(L, 0); /* emergency full collection. */
+    nptr = (void *)DO_REALLOC(ptr, nsize); /* try allocation again */
   }
   return nptr;
 }

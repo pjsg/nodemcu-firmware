@@ -426,6 +426,7 @@ static void Arith (lua_State *L, StkId ra, const TValue *rb,
       }
 
 
+int last_lua_opcode;
 
 void luaV_execute (lua_State *L, int nexeccalls) {
   LClosure *cl;
@@ -439,6 +440,7 @@ void luaV_execute (lua_State *L, int nexeccalls) {
   base = L->base;
   k = cl->p->k;
   /* main loop of interpreter */
+  int prev_opcode = -1;
   for (;;) {
     const Instruction i = *pc++;
     StkId ra;
@@ -454,9 +456,17 @@ void luaV_execute (lua_State *L, int nexeccalls) {
     /* warning!! several calls may realloc the stack and invalidate `ra' */
     ra = RA(i);
     lua_assert(base == L->base && L->base == L->ci->base);
+    if (!(base <= L->top && L->top <= L->stack + L->stacksize)) {
+      last_lua_opcode = prev_opcode;
+    }
     lua_assert(base <= L->top && L->top <= L->stack + L->stacksize);
+    lua_assert(base <= L->top);
+    lua_assert(L->top <= L->stack + L->stacksize);
+    if (!(L->top == L->ci->top || luaG_checkopenop(i))) {
+      last_lua_opcode = GET_OPCODE(i);
+    }
     lua_assert(L->top == L->ci->top || luaG_checkopenop(i));
-    switch (GET_OPCODE(i)) {
+    switch (prev_opcode = GET_OPCODE(i)) {
       case OP_MOVE: {
         setobjs2s(L, ra, RB(i));
         continue;
