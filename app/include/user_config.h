@@ -16,6 +16,10 @@
 #define ESP_INIT_DATA_ENABLE_READVDD33
 //#define ESP_INIT_DATA_ENABLE_READADC
 //#define ESP_INIT_DATA_FIXED_VDD33_VALUE 33
+//
+#define debug_xstr(s) debug_str(s)
+#define debug_str(s) #s
+#define lua_assert(e) ((e)? (void)0 :  (output_redirect(__FILE__  ":"  debug_xstr(__LINE__) ": " #e "\n"), (void) 0))
 
 // #define DEVELOP_VERSION
 #ifdef DEVELOP_VERSION
