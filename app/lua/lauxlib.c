@@ -853,7 +853,7 @@ static void *l_alloc (void *ud, void *ptr, size_t osize, size_t nsize) {
   lua_assert(!ptr || ((int *) ptr)[-1] == osize);
   nptr = (void *)DO_REALLOC(ptr, nsize);
   if (nptr == NULL && L != NULL && (mode & EGC_ON_ALLOC_FAILURE)) {
-    luaC_fullgc(L, 0); /* emergency full collection. */
+    luaC_fullgc(L); /* emergency full collection. */
     nptr = (void *)DO_REALLOC(ptr, nsize); /* try allocation again */
   }
   return nptr;
