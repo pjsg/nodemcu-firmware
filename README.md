@@ -665,3 +665,17 @@ elseif( status == dht.ERROR_TIMEOUT ) then
 end
 
 ```
+
+####Control a Switec instrument stepper
+Supports up to 2 four wire instrument steppers (as used in car instrument panels).
+```lua
+
+-- Initialize stepper 0 on pins 4,5,6,7 (you cannot use pin 0)
+switec.setup(0, 4,5,6,7)
+
+-- Drive the pointer anti-clockwise and set position as 0
+switec.reset(0)
+
+-- Move the pointer to position 56 (the callback is optional)
+switec.moveto(0, 56, function() print("Moved") end)
+```
