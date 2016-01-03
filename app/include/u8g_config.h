@@ -9,7 +9,9 @@
 #define U8G_FONT_TABLE_ENTRY(font)
 #define U8G_FONT_TABLE                          \
     U8G_FONT_TABLE_ENTRY(font_6x10)             \
-    U8G_FONT_TABLE_ENTRY(font_chikita)
+    U8G_FONT_TABLE_ENTRY(font_chikita)		\
+    U8G_FONT_TABLE_ENTRY(font_helvB24)
+    
 #undef U8G_FONT_TABLE_ENTRY
 //
 // ***************************************************************************

@@ -17,11 +17,13 @@
 //#define ESP_INIT_DATA_ENABLE_READADC
 //#define ESP_INIT_DATA_FIXED_VDD33_VALUE 33
 
-// #define DEVELOP_VERSION
+#define DEVELOP_VERSION
 #ifdef DEVELOP_VERSION
-#define NODE_DEBUG
+//#define NODE_DEBUG
 #define COAP_DEBUG
-#define BIT_RATE_DEFAULT BIT_RATE_74880
+//#define BIT_RATE_DEFAULT BIT_RATE_74880
+#define BIT_RATE_DEFAULT BIT_RATE_9600
+#define lua_assert(x)    ((x) ? (void) 0 : luaL_assertfail(__FILE__, __LINE__, #x))
 #else
 #define BIT_RATE_DEFAULT BIT_RATE_9600
 #endif /* DEVELOP_VERSION */
