@@ -82,7 +82,8 @@ LUALIB_API int (luaL_checkoption) (lua_State *L, int narg, const char *def,
 LUALIB_API int (luaL_ref) (lua_State *L, int t);
 LUALIB_API void (luaL_unref) (lua_State *L, int t, int ref);
 
-LUALIB_API char *(luaL_panicstr)(int offset, char *buff, size_t bufflen);
+LUALIB_API char *(luaL_consolelog)(int offset, char *buff, size_t bufflen);
+LUALIB_API void (luaL_append_consolelog)(const char *str);
 
 #ifdef LUA_CROSS_COMPILER
 LUALIB_API int (luaL_loadfile) (lua_State *L, const char *filename);

@@ -46,7 +46,9 @@
 #define LUA_USELIGHTFUNCTIONS     1
 
 // offset of the string, Marker is one before (if > 0)
-static unsigned char panic_str_offset;
+// previous location holds 0x31415xxx where the xxxx are the offset of 
+// oldest character
+static unsigned char console_str_offset;
 
 /*
 ** {======================================================
@@ -810,26 +812,52 @@ static void *l_alloc (void *ud, void *ptr, size_t osize, size_t nsize) {
   return nptr;
 }
 
-LUALIB_API char *luaL_panicstr(int offset, char *buff, size_t bufflen) {
-  if (offset >= 0 && offset < RTC_USER_MEM_NUM_DWORDS - 1) {
-    panic_str_offset = offset + 1; // Reserved for marker use
-  }
+LUALIB_API void luaL_append_consolelog(const char *str) {
+  if (console_str_offset != 0) {
+    size_t avail = (RTC_USER_MEM_NUM_DWORDS - console_str_offset) * 4;
+    int addr = console_str_offset * 4;
+    int offset = rtc_mem_read(console_str_offset - 1) & 0xfff;
 
-  if (panic_str_offset && rtc_mem_read(panic_str_offset - 1) == 0x31415926) {
-    size_t avail = (RTC_USER_MEM_NUM_DWORDS - panic_str_offset) * 4;
-    if (avail > bufflen) {
-      avail = bufflen;
+    while (*str) {
+      rtc_mem_write_byte(addr + (offset++) % avail, *str++);
     }
-    int i;
-    int addr = panic_str_offset * 4;
-    for (i = 0; i < avail; i++) {
-      char c = (char) rtc_mem_read_byte(addr + i);
-      buff[i] = c;
-      if (c == 0) {
-        break;
+
+    rtc_mem_write(console_str_offset - 1, 0x31415000 + (offset % avail));
+  }
+}
+
+LUALIB_API char *luaL_consolelog(int offset, char *buff, size_t bufflen) {
+  int i;
+  if (offset >= 0 && offset < RTC_USER_MEM_NUM_DWORDS - 1) {
+    if ((rtc_mem_read(offset) & 0xfffff000) != 0x31415000) {
+      rtc_mem_write(offset, 0x31415000);
+      for (i = offset + 1; i < RTC_USER_MEM_NUM_DWORDS; i++) {
+        rtc_mem_write(i, 0);
       }
     }
-    buff[bufflen - 1] = 0;   // Ensure null terminated
+    console_str_offset = offset + 1; // Reserved for marker use
+  }
+
+  if (console_str_offset && ((rtc_mem_read(console_str_offset - 1) & 0xfffff000) == 0x31415000)) {
+    size_t avail = (RTC_USER_MEM_NUM_DWORDS - console_str_offset) * 4;
+    int addr = console_str_offset * 4;
+    int offset = rtc_mem_read(console_str_offset - 1) & 0xfff;
+    int dest = 0;
+    int i = 0;
+    if (bufflen + 1 < avail) {
+      i = avail - bufflen - 1;
+    }
+    buff[0] = 0;
+    for (; i < avail; i++) {
+      char c = (char) rtc_mem_read_byte(addr + (i + offset) % avail);
+      if (c) {
+        buff[dest++] = c;
+        buff[dest] = 0;
+        if (dest == bufflen - 1) {
+          break;
+        }
+      }
+    }
   
     if (buff[0]) {
       return buff;
@@ -848,19 +876,6 @@ static int panic (lua_State *L) {
   luai_writestringerror("PANIC: unprotected error in call to Lua API (%s)\n",
                    msg);
 #endif
-  if (panic_str_offset != 0) {
-    size_t avail = (RTC_USER_MEM_NUM_DWORDS - panic_str_offset) * 4;
-    int i;
-    int addr = panic_str_offset * 4;
-    for (i = 0; i < avail; i++) {
-      char c = msg[i];
-      rtc_mem_write_byte(addr + i, c);
-      if (c == 0) {
-        break;
-      }
-    }
-    rtc_mem_write(panic_str_offset - 1, 0x31415926);
-  }
   while (1) {}
   return 0;
 }

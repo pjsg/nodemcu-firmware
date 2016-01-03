@@ -336,6 +336,7 @@ void output_redirect(const char *str) {
 
   if (output_redir_ref == LUA_NOREF || !gL) {
     uart0_sendStr(str);
+    luaL_append_consolelog(str);
     return;
   }
 
@@ -451,10 +452,10 @@ static int node_compile( lua_State* L )
   return 0;
 }
 
-// Lua: panicstr(rtcmemoffset)
+// Lua: consolelog(rtcmemoffset)
 // Sets the offset (0 .. 126) to use to save the panic str.
 // Returns the previous panic string
-static int node_panicstr(lua_State* L)
+static int node_consolelog(lua_State* L)
 {
   int offset;
 
@@ -467,7 +468,7 @@ static int node_panicstr(lua_State* L)
     }
   }
   char buff[256];
-  lua_pushstring(L, luaL_panicstr(offset, buff, sizeof(buff)));
+  lua_pushstring(L, luaL_consolelog(offset, buff, sizeof(buff)));
   return 1;
 }
 
@@ -592,7 +593,7 @@ static const LUA_REG_TYPE node_map[] =
   { LSTRKEY( "setcpufreq" ), LFUNCVAL( node_setcpufreq) },
   { LSTRKEY( "bootreason" ), LFUNCVAL( node_bootreason) },
   { LSTRKEY( "restore" ), LFUNCVAL( node_restore) },
-  { LSTRKEY( "panicstr" ), LFUNCVAL( node_panicstr) },
+  { LSTRKEY( "consolelog" ), LFUNCVAL( node_consolelog) },
 #ifdef LUA_OPTIMIZE_DEBUG
   { LSTRKEY( "stripdebug" ), LFUNCVAL( node_stripdebug ) },
 #endif
