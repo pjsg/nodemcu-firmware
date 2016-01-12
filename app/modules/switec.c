@@ -56,7 +56,7 @@ static int lswitec_close( lua_State* L )
   unsigned id;
   
   id = luaL_checkinteger( L, 1 );
-  MOD_CHECK_ID( pwm, id );
+  MOD_CHECK_ID( switec, id );
   if (switec_close( id )) {
     return luaL_error( L, "Unable to close stepper." );
   }
@@ -68,21 +68,10 @@ static int lswitec_reset( lua_State* L )
 {
   unsigned id;
   id = luaL_checkinteger( L, 1 );
-  MOD_CHECK_ID( pwm, id );
+  MOD_CHECK_ID( switec, id );
   if (switec_reset( id )) {
     return luaL_error( L, "Unable to reset stepper." );
   }
-  return 0;  
-}
-
-// Lua: stop( id )
-static int lpwm_stop( lua_State* L )
-{
-  unsigned id;
-  
-  id = luaL_checkinteger( L, 1 );
-  MOD_CHECK_ID( pwm, id );
-  platform_pwm_stop( id );
   return 0;  
 }
 
@@ -92,7 +81,7 @@ static int lswitec_moveto( lua_State* L )
   unsigned id;
   
   id = luaL_checkinteger( L, 1 );
-  MOD_CHECK_ID( pwm, id );
+  MOD_CHECK_ID( switec, id );
   int pos;
   pos = luaL_checkinteger( L, 2 );
   if (switec_moveto( id, pos )) {
