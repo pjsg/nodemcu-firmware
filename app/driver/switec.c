@@ -32,13 +32,14 @@ static const uint8_t stateMap[N_STATES] = {0x9, 0x1, 0x7, 0x6, 0xE, 0x8};
 typedef struct {
   uint8_t  currentState;
   uint8_t  stopped;
-  uint8_t  dir;
+  int8_t   dir;
   uint32_t mask;
   uint32_t pinstate[N_STATES];
   uint32_t nextTime;
   int16_t  targetStep;
   int16_t  currentStep;
   uint16_t vel;
+  uint16_t maxVel;
 } DATA;
 
 static DATA *data[2];
@@ -154,7 +155,7 @@ static void timer_interrupt(void)
       if (delta < d->vel) {
 	// time to declerate
 	d->vel--;
-      } else if (d->vel < MAXVEL) {
+      } else if (d->vel < d->maxVel) {
 	// accelerating
 	d->vel++;
       } else {
@@ -233,6 +234,8 @@ int switec_setup(uint32_t channel, int *pin )
     }
   }
 
+  d->maxVel = MAXVEL;
+
   // Set all pins as outputs
   gpio_output_set(0, 0, d->mask, 0);
 
@@ -268,6 +271,13 @@ int switec_moveto(uint32_t channel, int pos)
 
   if (!d) {
     return -1;
+  }
+
+  if (pos < 0) {
+    // This ensures that we don't slam into the endstop
+    d->maxVel = 50;
+  } else {
+    d->maxVel = MAXVEL;
   }
 
   d->targetStep = pos;
