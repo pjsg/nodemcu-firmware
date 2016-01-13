@@ -81,21 +81,21 @@ int switec_close(uint32_t channel)
   return 0;
 }
 
-static void writeIO(DATA *d) 
+static inline void writeIO(DATA *d) 
 {
   uint32_t pinState = d->pinstate[d->currentState];
 
   gpio_output_set(pinState, d->mask & ~pinState, 0, 0);
 }
 
-static void stepUp(DATA *d) 
+static inline void stepUp(DATA *d) 
 {
   d->currentStep++;
   d->currentState = (d->currentState + 1) % N_STATES;
   writeIO(d);
 }
 
-static void stepDown(DATA *d) 
+static inline void stepDown(DATA *d) 
 {
   d->currentStep--;
   d->currentState = (d->currentState + N_STATES - 1) % N_STATES;
@@ -140,7 +140,7 @@ static void timer_interrupt(void)
       d->vel = 1; 
     }
     
-    if (d->dir>0) {
+    if (d->dir > 0) {
       stepUp(d);
     } else {
       stepDown(d);
@@ -167,12 +167,12 @@ static void timer_interrupt(void)
     }
     
     // vel now defines delay
-    unsigned char row = 0;
+    uint8_t row = 0;
     // this is why vel must not be greater than the last vel in the table.
     while (accelTable[row][0] < d->vel) {
       row++;
     }
-    int microDelay = accelTable[row][1];
+    int32_t microDelay = accelTable[row][1];
     d->nextTime = d->nextTime + microDelay;
     if (d->nextTime < now) {
       d->nextTime = now + microDelay;
@@ -188,8 +188,8 @@ static void timer_interrupt(void)
     if (delay < 50) {
       delay = 50;
     }
-    hw_timer_arm(delay);
     timerActive = 1;
+    hw_timer_arm(delay);
   } else {
     timerActive = 0;
   }
@@ -294,3 +294,20 @@ int switec_moveto(uint32_t channel, int pos)
   return 0;  
 }
 
+int switec_getpos(uint32_t channel, int32_t *pos, int32_t *dir) 
+{
+  if (channel >= sizeof(data) / sizeof(data[0])) {
+    return -1;
+  }
+
+  DATA *d = data[channel];
+
+  if (!d) {
+    return -1;
+  }
+
+  *pos = d->currentStep;
+  *dir = d->stopped ? 0 : d->dir;
+
+  return 0;
+}

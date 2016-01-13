@@ -90,12 +90,30 @@ static int lswitec_moveto( lua_State* L )
   return 0;
 }
 
+// Lua: getpos( id ) -> position, moving
+static int lswitec_getpos( lua_State* L )
+{
+  unsigned id;
+  
+  id = luaL_checkinteger( L, 1 );
+  MOD_CHECK_ID( switec, id );
+  int32_t pos;
+  int32_t dir;
+  if (switec_getpos( id, &pos, &dir )) {
+    return luaL_error( L, "Unable to get position." );
+  }
+  lua_pushnumber(L, pos);
+  lua_pushnumber(L, dir);
+  return 2;
+}
+
 // Module function map
 static const LUA_REG_TYPE switec_map[] = {
   { LSTRKEY( "setup" ),    LFUNCVAL( lswitec_setup ) },
   { LSTRKEY( "close" ),    LFUNCVAL( lswitec_close ) },
   { LSTRKEY( "reset" ),    LFUNCVAL( lswitec_reset ) },
   { LSTRKEY( "moveto" ),   LFUNCVAL( lswitec_moveto) },
+  { LSTRKEY( "getpos" ),   LFUNCVAL( lswitec_getpos) },
   { LNILKEY, LNILVAL }
 };
 
