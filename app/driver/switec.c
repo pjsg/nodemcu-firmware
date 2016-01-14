@@ -152,7 +152,7 @@ static void timer_interrupt(void)
     
     if (delta > 0) {
       // case 1 : moving towards target (maybe under accel or decel)
-      if (delta < d->vel) {
+      if (delta <= d->vel) {
 	// time to declerate
 	d->vel--;
       } else if (d->vel < d->maxVel) {
