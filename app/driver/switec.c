@@ -211,7 +211,7 @@ int switec_setup(uint32_t channel, int *pin )
 
   if (!data[0] && !data[1]) {
     // NMI with no autoreload
-    hw_timer_init(1 /*NMI_SOURCE*/, 0);
+    hw_timer_init(0 /*FRC1_SOURCE*/, 0);
     hw_timer_set_func(timer_interrupt);
   }
 
