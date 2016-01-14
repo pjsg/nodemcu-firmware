@@ -53,6 +53,8 @@ tmr.softwd(int)
 #include "platform.h"
 #include "c_types.h"
 
+#include "task.h"
+
 #define TIMER_MODE_OFF 3
 #define TIMER_MODE_SINGLE 0
 #define TIMER_MODE_SEMI 2
@@ -106,7 +108,9 @@ static void alarm_timer_common(void* arg){
 	}else if(tmr->mode == TIMER_MODE_SEMI){
 		tmr->mode |= TIMER_IDLE_FLAG;
 	}
+	task_time_start();
 	lua_call(tmr->L, 0, 0);
+	task_time_end();
 }
 
 // Lua: tmr.delay( us )

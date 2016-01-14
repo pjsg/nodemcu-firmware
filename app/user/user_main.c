@@ -23,6 +23,8 @@
 #include "driver/uart.h"
 #include "mem.h"
 
+#include "task.h"
+
 #ifdef LUA_USE_MODULES_RTCTIME
 #include "rtc/rtctime.h"
 #endif
@@ -83,6 +85,7 @@ void TEXT_SECTION_ATTR user_start_trampoline (void)
 
 
 void task_lua(os_event_t *e){
+    task_time_start();
     char* lua_argv[] = { (char *)"lua", (char *)"-i", NULL };
     NODE_DBG("Task task_lua started.\n");
     switch(e->sig){
@@ -99,6 +102,7 @@ void task_lua(os_event_t *e){
         default:
             break;
     }
+    task_time_end();
 }
 
 void task_init(void){

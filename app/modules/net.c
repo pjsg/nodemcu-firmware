@@ -13,6 +13,8 @@
 #include "espconn.h"
 #include "lwip/dns.h" 
 
+#include "task.h"
+
 #ifdef CLIENT_SSL_ENABLE
 unsigned char *default_certificate;
 unsigned int default_certificate_len = 0;
@@ -74,6 +76,7 @@ static void net_server_disconnected(void *arg)    // for tcp server only
   NODE_DBG("%d",pesp_conn->proto.tcp->remote_port);
   NODE_DBG(" disconnected.\n");
 #endif
+  task_time_start();
   if(nud->cb_disconnect_ref != LUA_NOREF && nud->self_ref != LUA_NOREF)
   {
     lua_rawgeti(gL, LUA_REGISTRYINDEX, nud->cb_disconnect_ref);
@@ -95,6 +98,7 @@ static void net_server_disconnected(void *arg)    // for tcp server only
     }
   }
   lua_gc(gL, LUA_GCRESTART, 0);
+  task_time_end();
 }
 
 static void net_socket_disconnected(void *arg)    // tcp only
@@ -106,6 +110,7 @@ static void net_socket_disconnected(void *arg)    // tcp only
   lnet_userdata *nud = (lnet_userdata *)pesp_conn->reverse;
   if(nud == NULL)
     return;
+  task_time_start();
   if(nud->cb_disconnect_ref != LUA_NOREF && nud->self_ref != LUA_NOREF)
   {
     lua_rawgeti(gL, LUA_REGISTRYINDEX, nud->cb_disconnect_ref);
@@ -125,6 +130,7 @@ static void net_socket_disconnected(void *arg)    // tcp only
     nud->self_ref = LUA_NOREF; // unref this, and the net.socket userdata will delete it self
   }
   lua_gc(gL, LUA_GCRESTART, 0);
+  task_time_end();
 }
 
 static void net_server_reconnected(void *arg, sint8_t err)
@@ -160,7 +166,9 @@ static void net_socket_received(void *arg, char *pdata, unsigned short len)
   // NODE_DBG("\n");
   lua_pushlstring(gL, pdata, len);
   // lua_pushinteger(gL, len);
+  task_time_start();
   lua_call(gL, 2, 0);
+  task_time_end();
 }
 
 static void net_socket_sent(void *arg)
@@ -178,7 +186,9 @@ static void net_socket_sent(void *arg)
     return;
   lua_rawgeti(gL, LUA_REGISTRYINDEX, nud->cb_send_ref);
   lua_rawgeti(gL, LUA_REGISTRYINDEX, nud->self_ref);  // pass the userdata(server) to callback func in lua
+  task_time_start();
   lua_call(gL, 1, 0);
+  task_time_end();
 }
 
 static void net_dns_found(const char *name, ip_addr_t *ipaddr, void *arg)
@@ -243,7 +253,9 @@ static void net_dns_found(const char *name, ip_addr_t *ipaddr, void *arg)
   }
   // "enhanced" end
 
+  task_time_start();
   lua_call(gL, 2, 0);
+  task_time_end();
 
 end:
   if((pesp_conn->type == ESPCONN_TCP && pesp_conn->proto.tcp->remote_port == 0)
@@ -335,7 +347,9 @@ static void net_server_connected(void *arg) // for tcp only
   espconn_regist_reconcb(pesp_conn, net_server_reconnected);
 
   // now socket[i] has the client ref, and stack top has the userdata
+  task_time_start();
   lua_call(gL, 1, 0);  // function(conn)
+  task_time_end();
 }
 
 static void net_socket_connected(void *arg)
@@ -358,7 +372,9 @@ static void net_socket_connected(void *arg)
     return;
   lua_rawgeti(gL, LUA_REGISTRYINDEX, nud->cb_connect_ref);
   lua_rawgeti(gL, LUA_REGISTRYINDEX, nud->self_ref);  // pass the userdata(client) to callback func in lua
+  task_time_start();
   lua_call(gL, 1, 0);
+  task_time_end();
 }
 
 // Lua: s = net.create(type, secure/timeout, function(conn))
@@ -497,7 +513,9 @@ static int net_create( lua_State* L, const char* mt )
   if (lua_type(L, stack) == LUA_TFUNCTION || lua_type(L, stack) == LUA_TLIGHTFUNCTION){
     lua_pushvalue(L, stack);  // copy argument (func) to the top of stack
     lua_pushvalue(L, -2);  // copy the self_ref(userdata) to the top
+    task_time_start();
     lua_call(L, 1, 0);
+    task_time_end();
   }
 
   return 1; 

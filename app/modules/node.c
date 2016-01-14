@@ -26,6 +26,8 @@
 #include "flash_fs.h"
 #include "user_version.h"
 
+#include "task.h"
+
 #define CPU80MHZ 80
 #define CPU160MHZ 160
 
@@ -497,6 +499,35 @@ static int node_restore (lua_State *L)
   return 0;
 }
 
+#ifdef TASK_TIMING
+static uint32_t task_time_max;
+static const char *task_time_max_name;
+static uint32_t task_time_start_us;
+
+void task_time_start_impl() 
+{
+  task_time_start_us = system_get_time();
+}
+
+void task_time_end_impl(const char *name) 
+{
+  uint32_t duration = system_get_time() - task_time_start_us;
+  if (duration > task_time_max) {
+    task_time_max = duration;
+    task_time_max_name = name;
+  }
+}
+
+// Lua: maxtime() returns time in us
+static int node_tasktime (lua_State *L)
+{
+  lua_pushnumber(L, (int32_t) task_time_max);
+  lua_pushstring(L, task_time_max_name);
+  task_time_max = 0;
+  return 2;
+}
+#endif
+
 #ifdef LUA_OPTIMIZE_DEBUG
 /* node.stripdebug([level[, function]]). 
  * level:    1 don't discard debug
@@ -584,6 +615,9 @@ static const LUA_REG_TYPE node_map[] =
   { LSTRKEY( "setcpufreq" ), LFUNCVAL( node_setcpufreq) },
   { LSTRKEY( "bootreason" ), LFUNCVAL( node_bootreason) },
   { LSTRKEY( "restore" ), LFUNCVAL( node_restore) },
+#ifdef TASK_TIMING
+  { LSTRKEY( "tasktime" ), LFUNCVAL( node_tasktime) },
+#endif
 #ifdef LUA_OPTIMIZE_DEBUG
   { LSTRKEY( "stripdebug" ), LFUNCVAL( node_stripdebug ) },
 #endif
