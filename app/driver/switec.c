@@ -47,14 +47,16 @@ typedef struct {
 static DATA *data[2];
 static volatile char timerActive;
 
-#define MAXVEL 300
+#define MAXVEL 255
 
-static const uint16_t accelTable[][2] = {
-    {   20, 3000},
-    {   50, 1500},
-    {  100, 1000},
-    {  150,  800},
-    {  MAXVEL,  600}
+// Note that this has to be global so that the compiler does not
+// put it into ROM.
+uint8_t switec_accel_table[][2] = {
+    {   20, 3000 >> 4},
+    {   50, 1500 >> 4},
+    {  100, 1000 >> 4},
+    {  150,  800 >> 4},
+    {  MAXVEL,  600 >> 4}
 };
 
 // Just takes the channel number
@@ -93,28 +95,28 @@ int switec_close(uint32_t channel)
   return 0;
 }
 
-static inline void writeIO(DATA *d) 
+static __attribute__((always_inline)) inline void writeIO(DATA *d) 
 {
   uint32_t pinState = d->pinstate[d->currentState];
 
   gpio_output_set(pinState, d->mask & ~pinState, 0, 0);
 }
 
-static inline void stepUp(DATA *d) 
+static __attribute__((always_inline)) inline  void stepUp(DATA *d) 
 {
   d->currentStep++;
   d->currentState = (d->currentState + 1) % N_STATES;
   writeIO(d);
 }
 
-static inline void stepDown(DATA *d) 
+static __attribute__((always_inline)) inline  void stepDown(DATA *d) 
 {
   d->currentStep--;
   d->currentState = (d->currentState + N_STATES - 1) % N_STATES;
   writeIO(d);
 }
 
-static void timer_interrupt(void)
+static void ICACHE_RAM_ATTR timer_interrupt(void) 
 {
   // This function really is running at interrupt level with everything
   // else masked off. It should take as little time as necessary.
@@ -181,10 +183,10 @@ static void timer_interrupt(void)
     // vel now defines delay
     uint8_t row = 0;
     // this is why vel must not be greater than the last vel in the table.
-    while (accelTable[row][0] < d->vel) {
+    while (switec_accel_table[row][0] < d->vel) {
       row++;
     }
-    uint32_t microDelay = accelTable[row][1];
+    uint32_t microDelay = switec_accel_table[row][1] << 4;
     if (microDelay < d->minDelay) {
       microDelay = d->minDelay;
     }
@@ -255,6 +257,7 @@ int switec_setup(uint32_t channel, int *pin, int maxDegPerSec )
   }
   d->minDelay = 1000000 / (3 * maxDegPerSec);
 
+#ifdef SWITEC_DEBUG
   for (i = 0; i < 4; i++) {
     c_printf("pin[%d]=%d\n", i, pin[i]);
   }
@@ -263,6 +266,7 @@ int switec_setup(uint32_t channel, int *pin, int maxDegPerSec )
   for (i = 0; i < N_STATES; i++) {
     c_printf("pinstate[%d]=0x%x\n", i, d->pinstate[i]);
   }
+#endif
 
   // Set all pins as outputs
   gpio_output_set(0, 0, d->mask, 0);
