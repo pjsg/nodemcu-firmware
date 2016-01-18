@@ -16,6 +16,7 @@
 #include "platform.h"
 #include "c_types.h"
 #include "../libc/c_stdlib.h"
+#include "../libc/c_stdio.h"
 #include "driver/switec.h"
 
 #define N_STATES 6
@@ -40,6 +41,7 @@ typedef struct {
   int16_t  currentStep;
   uint16_t vel;
   uint16_t maxVel;
+  uint16_t minDelay;
 } DATA;
 
 static DATA *data[2];
@@ -77,6 +79,16 @@ int switec_close(uint32_t channel)
 
   data[channel] = NULL;
   c_free(d);
+
+  for (channel = 0; channel < sizeof(data)/sizeof(data[0]); channel++) {
+    if (data[channel]) {
+      break;
+    }
+  }
+
+  if (channel >= sizeof(data) / sizeof(data[0])) {
+    ETS_FRC1_INTR_DISABLE();
+  }
 
   return 0;
 }
@@ -172,7 +184,10 @@ static void timer_interrupt(void)
     while (accelTable[row][0] < d->vel) {
       row++;
     }
-    int32_t microDelay = accelTable[row][1];
+    uint32_t microDelay = accelTable[row][1];
+    if (microDelay < d->minDelay) {
+      microDelay = d->minDelay;
+    }
     d->nextTime = d->nextTime + microDelay;
     if (d->nextTime < now) {
       d->nextTime = now + microDelay;
@@ -197,7 +212,7 @@ static void timer_interrupt(void)
 
 
 // The pin numbers are actual platform GPIO numbers
-int switec_setup(uint32_t channel, int *pin )
+int switec_setup(uint32_t channel, int *pin, int maxDegPerSec )
 {
   if (channel >= sizeof(data) / sizeof(data[0])) {
     return -1;
@@ -235,9 +250,24 @@ int switec_setup(uint32_t channel, int *pin )
   }
 
   d->maxVel = MAXVEL;
+  if (maxDegPerSec == 0) {
+    maxDegPerSec = 400;
+  }
+  d->minDelay = 1000000 / (3 * maxDegPerSec);
+
+  for (i = 0; i < 4; i++) {
+    c_printf("pin[%d]=%d\n", i, pin[i]);
+  }
+
+  c_printf("Mask=0x%x\n", d->mask);
+  for (i = 0; i < N_STATES; i++) {
+    c_printf("pinstate[%d]=0x%x\n", i, d->pinstate[i]);
+  }
 
   // Set all pins as outputs
   gpio_output_set(0, 0, d->mask, 0);
+
+  ETS_FRC1_INTR_ENABLE();
 
   return 0;
 }

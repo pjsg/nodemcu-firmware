@@ -6,7 +6,7 @@
 
 #include "c_types.h"
 
-int switec_setup(uint32_t channel, int *pin );
+int switec_setup(uint32_t channel, int *pin, int max_deg_per_sec );
 
 int switec_close(uint32_t channel);
 

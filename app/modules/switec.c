@@ -25,7 +25,7 @@ int platform_switec_exists( unsigned int id )
   return (id < 2);
 }
 
-// Lua: setup(id, P1, P2, P3, P4)
+// Lua: setup(id, P1, P2, P3, P4, maxSpeed)
 static int lswitec_setup( lua_State* L )
 {
   unsigned id;
@@ -33,6 +33,10 @@ static int lswitec_setup( lua_State* L )
   id = luaL_checkinteger( L, 1 );
   MOD_CHECK_ID( switec, id );
   int pin[4];
+
+  if (switec_close(id)) {
+    return luaL_error( L, "Unable to setup stepper." );
+  }
 
   int i;
   for (i = 0; i < 4; i++) {
@@ -43,9 +47,17 @@ static int lswitec_setup( lua_State* L )
     }
 
     pin[i] = pin_num[gpio];
+
+    platform_gpio_mode(gpio, PLATFORM_GPIO_OUTPUT, PLATFORM_GPIO_PULLUP);
   }
-  if (switec_setup( id, pin )) {
-    return luaL_error( L, "Unable to setup stepper." );
+
+  int degPerSec = 0;
+  if (lua_gettop(L) >= 6) {
+    degPerSec = luaL_checkinteger(L, 6);
+  }
+
+  if (switec_setup(id, pin, degPerSec)) {
+    return luaL_error(L, "Unable to setup stepper.");
   }
   return 0;  
 }
