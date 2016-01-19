@@ -144,6 +144,7 @@ static void ICACHE_RAM_ATTR timer_interrupt(void)
       d->stopped = 1;
       d->dir = 0;
       // TODO: We need to post a message to say that the motion is complete
+      // system_os_post(LUA_TASK, , i);
       continue;
     }
 
@@ -328,7 +329,7 @@ int switec_moveto(uint32_t channel, int pos)
   return 0;  
 }
 
-int switec_getpos(uint32_t channel, int32_t *pos, int32_t *dir) 
+int switec_getpos(uint32_t channel, int32_t *pos, int32_t *dir, int32_t *target) 
 {
   if (channel >= sizeof(data) / sizeof(data[0])) {
     return -1;
@@ -342,6 +343,7 @@ int switec_getpos(uint32_t channel, int32_t *pos, int32_t *dir)
 
   *pos = d->currentStep;
   *dir = d->stopped ? 0 : d->dir;
+  *target = d->targetStep;
 
   return 0;
 }

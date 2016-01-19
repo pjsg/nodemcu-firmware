@@ -38,6 +38,18 @@ static void callbackSet(lua_State* L, unsigned int id, int argNumber)
   }
 }
 
+static void callbackExecute(lua_State* L, unsigned int id) 
+{
+  if (stoppedCallback[id] != LUA_NOREF) {
+    int callback = stoppedCallback[id];
+    lua_rawgeti(L, LUA_REGISTRYINDEX, callback);
+    stoppedCallback[id] = LUA_NOREF;
+    luaL_unref(L, LUA_REGISTRYINDEX, callback);
+
+    lua_call(L, 0, 0);
+  }
+}
+
 int platform_switec_exists( unsigned int id )
 {
   return (id < 2);
@@ -137,12 +149,31 @@ static int lswitec_getpos( lua_State* L )
   MOD_CHECK_ID( switec, id );
   int32_t pos;
   int32_t dir;
-  if (switec_getpos( id, &pos, &dir )) {
+  int32_t target;
+  if (switec_getpos( id, &pos, &dir, &target )) {
     return luaL_error( L, "Unable to get position." );
   }
   lua_pushnumber(L, pos);
   lua_pushnumber(L, dir);
   return 2;
+}
+
+void lswitec_callback_check(lua_State* L)
+{
+  int id;
+
+  for (id = 0; id < 2; id++) {
+    if (stoppedCallback[id] != LUA_NOREF) {
+      int32_t pos;
+      int32_t dir;
+      int32_t target;
+      if (!switec_getpos( id, &pos, &dir, &target )) {
+	if (dir == 0 && pos == target) {
+	  callbackExecute(L, id);
+	}
+      }
+    }
+  }
 }
 
 // Module function map

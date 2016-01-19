@@ -14,6 +14,6 @@ int switec_moveto(uint32_t channel, int pos);
 
 int switec_reset(uint32_t channel);
 
-int switec_getpos(uint32_t channel, int32_t *pos, int32_t *dir);
+int switec_getpos(uint32_t channel, int32_t *pos, int32_t *dir, int32_t *target);
 
 #endif

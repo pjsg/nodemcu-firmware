@@ -9,7 +9,13 @@ can mount two needles from the same axis.
 These motors run off 5V (some may work off 3.3V). THey draw under 20mA and are designed to be
 driven directly from MCU pins. Since the nodemcu runs at 3.3V, a level translator is required.
 An octal translator like the 74LVC4245A can perfom this translation. It also includes all the
-protection diodes required.
+protection diodes required. 
+
+These motors can be driven off three pins, with `pin2` and `pin3` being the same GPIO pin. 
+If the motor is directly connected to the MCU, then the current load is doubled and may exceed
+the maximum ratings. If, however, a driver chip is being used, then the load of the MCU is neglible
+and the same MCU pin can be connected to two driver pins. In order to do this, just specify
+the same pin for `pin2` and `pin3`.
 
 These motors do not have absolute positioning, but come with stops at both ends of the range.
 The startup procedure is to drive the motor anti-clockwise until it is guaranteed that the needle
@@ -48,7 +54,11 @@ switec.setup(0, 5,6,7,8)
 
 ## switec.moveto()
 Starts the needle moving to the specified position. If the needle is already moving, then the current
-motion is cancelled, and the needle will move to the new position.
+motion is cancelled, and the needle will move to the new position. It is possible to get a callback
+when the needle stops moving. This is not normally required as multiple `moveto` operations can
+be issued in quick succession. During the initial calibration, it is important. Note that the 
+callback is not guaranteed to be called -- it is possible that the needle never stops at the
+target location before another `moveto` operation is triggered.
 
 #### Syntax
 `switec.moveto(channel, position[, stoppedCallback)`
@@ -98,4 +108,17 @@ Releases the resources associated with the stepper.
 #### Errors
 The needle must not be moving, otherwise an error is thrown.
 
+## Calibration
+In order to set the zero point correctly, the needle should be driven anti-clockwise until
+it runs into the end stop. Then the zero point can be set.
 
+```lua
+switec.setup(0, 5,6,7,8)
+calibration = true
+switec.moveto(0, -1000, function() 
+  switec.reset(0)
+  calibration = false
+end)
+```
+
+Other `moveto` operations should not be performed while `calibration` is set.
