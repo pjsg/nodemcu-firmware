@@ -19,6 +19,24 @@
 #include "c_types.h"
 #include "driver/switec.h"
 
+static stoppedCallback[2] = { LUA_NONREF, LUA_NONREF };
+
+static void callbackFree(lua_State* L, unsigned int id) 
+{
+  if (stoppedCallback[id] != LUA_NONREF) {
+    luaL_unref(L, LUA_REGISTRYINDEX, stoppedCallback[id]);
+    stoppedCallback[id] = LUA_NONREF;
+  }
+}
+
+static void callbackSet(lua_State* L, unsigned int id, int argNumber) 
+{
+  if (lua_type(L, argNumber) == LUA_TFUNCTION || lua_type(L, argNumber) == LUA_TLIGHTFUNCTION) {
+    lua_pushvalue(L, argNumber);  // copy argument (func) to the top of stack
+    callbackFree(L, id);
+    stoppedCallback[id] = luaL_ref(L, LUA_REGISTRYINDEX);
+  }
+}
 
 int platform_switec_exists( unsigned int id )
 {
@@ -69,6 +87,7 @@ static int lswitec_close( lua_State* L )
   
   id = luaL_checkinteger( L, 1 );
   MOD_CHECK_ID( switec, id );
+  callbackFree(L, id);
   if (switec_close( id )) {
     return luaL_error( L, "Unable to close stepper." );
   }
@@ -87,7 +106,7 @@ static int lswitec_reset( lua_State* L )
   return 0;  
 }
 
-// Lua: moveto( id, pos )
+// Lua: moveto( id, pos [, cb] )
 static int lswitec_moveto( lua_State* L )
 {
   unsigned id;
@@ -96,6 +115,13 @@ static int lswitec_moveto( lua_State* L )
   MOD_CHECK_ID( switec, id );
   int pos;
   pos = luaL_checkinteger( L, 2 );
+
+  if (lua_gettop(L) >= 3) {
+    callbackSet(L, id, 3);
+  } else {
+    callbackfree(L, id);
+  }
+
   if (switec_moveto( id, pos )) {
     return luaL_error( L, "Unable to move stepper." );
   }

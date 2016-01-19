@@ -1,6 +1,6 @@
 # switec Module
 
-This module controls a Switec X.28 (or compatible) instrument stepper motor. These are the 
+This module controls a Switec X.27 (or compatible) instrument stepper motor. These are the 
 stepper motors that are used in modern automotive instrument clusters. They are incredibly cheap
 and can be found at your favorite auction site or Chinese shopping site. There are varieties
 which are dual axis -- i.e. have two stepper motors driving two concentric shafts so you 
@@ -16,30 +16,30 @@ The startup procedure is to drive the motor anti-clockwise until it is guarantee
 is on the step. Then this point can be set as zero. It is important not to let the motor
 run into the endstops during normal operation as this will make the pointing inaccurate.
 
-!!! note "Note:"
+##### Note
 
 This module uses the hardware timer interrupt and hence it is incompatible with the PWM module.
 
 ## switec.setup()
-Initialize the nodemcu to talk to a switec X.28 or compatible instrument stepper motor.
+Initialize the nodemcu to talk to a switec X.27 or compatible instrument stepper motor.
 
 #### Syntax
 `switec.setup(channel, pin1, pin2, pin3, pin4 [, maxDegPerSec])`
 
 #### Parameters
-`channel` The switec module supports two stepper motors. The channel is either 0 or 1.
-`pin1` This is a GPIO number (excluding 0) and connects to pin 1 on the stepper.
-`pin2` This is a GPIO number (excluding 0) and connects to pin 2 on the stepper.
-`pin3` This is a GPIO number (excluding 0) and connects to pin 3 on the stepper.
-`pin4` This is a GPIO number (excluding 0) and connects to pin 4 on the stepper.
-`maxDegPerSec` (optional) This can set to limit the maximum slew rate. The default is 600 degrees per second.
+- `channel` The switec module supports two stepper motors. The channel is either 0 or 1.
+- `pin1` This is a GPIO number (excluding 0) and connects to pin 1 on the stepper.
+- `pin2` This is a GPIO number (excluding 0) and connects to pin 2 on the stepper.
+- `pin3` This is a GPIO number (excluding 0) and connects to pin 3 on the stepper.
+- `pin4` This is a GPIO number (excluding 0) and connects to pin 4 on the stepper.
+- `maxDegPerSec` (optional) This can set to limit the maximum slew rate. The default is 600 degrees per second.
 
 #### Returns
 Nothing. If the arguments are in error, or the operation cannot be completed, then an error is thrown.
 
-!!! note "Note:"
+##### Note
 
-    Once a channel is setup, it cannot be re-setup until the needle has stopped moving. 
+Once a channel is setup, it cannot be re-setup until the needle has stopped moving. 
 
 #### Example
 ```lua
@@ -51,11 +51,12 @@ Starts the needle moving to the specified position. If the needle is already mov
 motion is cancelled, and the needle will move to the new position.
 
 #### Syntax
-`switec.moveto(channel, position)`
+`switec.moveto(channel, position[, stoppedCallback)`
 
 #### Parameters
-`channel` The switec module supports two stepper motors. The channel is either 0 or 1.
-`position` The position (number of steps clockwise) to move the needle. Typically in the range 0 to around 1000.
+- `channel` The switec module supports two stepper motors. The channel is either 0 or 1.
+- `position` The position (number of steps clockwise) to move the needle. Typically in the range 0 to around 1000.
+- `stoppedCallback` (optional) callback to be invoked when the needle stops moving.
 
 #### Errors
 The channel must have been setup, otherwise an error is thrown.
@@ -67,7 +68,7 @@ This sets the current position of the needle as being zero. The needle must be s
 `switec.reset(channel)`
 
 #### Parameters
-`channel` The switec module supports two stepper motors. The channel is either 0 or 1.
+- `channel` The switec module supports two stepper motors. The channel is either 0 or 1.
 
 #### Errors
 The channel must have been setup and the needle must not be moving, otherwise an error is thrown.
@@ -79,7 +80,7 @@ Gets the current position of the needle and whether it is moving.
 `switec.getpos(channel)`
 
 #### Parameters
-`channel` The switec module supports two stepper motors. The channel is either 0 or 1.
+- `channel` The switec module supports two stepper motors. The channel is either 0 or 1.
 
 #### Returns
 - `position` the current position of the needle
@@ -92,7 +93,9 @@ Releases the resources associated with the stepper.
 `switec.close(channel)`
 
 #### Parameters
-`channel` The switec module supports two stepper motors. The channel is either 0 or 1.
+- `channel` The switec module supports two stepper motors. The channel is either 0 or 1.
 
 #### Errors
 The needle must not be moving, otherwise an error is thrown.
+
+
