@@ -19,13 +19,13 @@
 #include "c_types.h"
 #include "driver/switec.h"
 
-static stoppedCallback[2] = { LUA_NONREF, LUA_NONREF };
+static int stoppedCallback[2] = { LUA_NOREF, LUA_NOREF };
 
 static void callbackFree(lua_State* L, unsigned int id) 
 {
-  if (stoppedCallback[id] != LUA_NONREF) {
+  if (stoppedCallback[id] != LUA_NOREF) {
     luaL_unref(L, LUA_REGISTRYINDEX, stoppedCallback[id]);
-    stoppedCallback[id] = LUA_NONREF;
+    stoppedCallback[id] = LUA_NOREF;
   }
 }
 
@@ -119,7 +119,7 @@ static int lswitec_moveto( lua_State* L )
   if (lua_gettop(L) >= 3) {
     callbackSet(L, id, 3);
   } else {
-    callbackfree(L, id);
+    callbackFree(L, id);
   }
 
   if (switec_moveto( id, pos )) {
