@@ -68,7 +68,7 @@ void  hw_timer_set_func(void (* user_hw_timer_cb_set)(void))
     user_hw_timer_cb = user_hw_timer_cb_set;
 }
 
-static void ICACHE_RAM_ATTR hw_timer_isr_cb(void)
+static void ICACHE_RAM_ATTR hw_timer_isr_cb(void *p)
 {
     if (user_hw_timer_cb != NULL) {
         (*(user_hw_timer_cb))();
