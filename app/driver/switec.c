@@ -20,14 +20,23 @@
 #include "driver/switec.h"
 
 #define N_STATES 6
-
-// State  3 2 1 0   Value
-// 0      1 0 0 1   0x9
-// 1      0 0 0 1   0x1
-// 2      0 1 1 1   0x7
-// 3      0 1 1 0   0x6
-// 4      1 1 1 0   0xE
-// 5      1 0 0 0   0x8
+//
+// First pin passed to setup corresponds to bit 3
+// On the motor, the pins are arranged
+//
+//    4           1
+//
+//    3           2
+//
+// The direction of rotation can be reversed by reordering the pins
+//
+// State  3 2 1 0  A B  Value
+// 0      1 0 0 1  - -  0x9
+// 1      0 0 0 1  . -  0x1
+// 2      0 1 1 1  + .  0x7
+// 3      0 1 1 0  + +  0x6
+// 4      1 1 1 0  . +  0xE
+// 5      1 0 0 0  - .  0x8
 static const uint8_t stateMap[N_STATES] = {0x9, 0x1, 0x7, 0x6, 0xE, 0x8};
 
 typedef struct {
@@ -246,7 +255,7 @@ int switec_setup(uint32_t channel, int *pin, int maxDegPerSec )
 
     int j;
     for (j = 0; j < N_STATES; j++) {
-      if (stateMap[j] & (1 << i)) {
+      if (stateMap[j] & (1 << (3 - i))) {
         d->pinstate[j] |= 1 << pin[i];
       }
     }
