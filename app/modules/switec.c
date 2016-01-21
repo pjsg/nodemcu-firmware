@@ -19,7 +19,7 @@
 #include "c_types.h"
 #include "driver/switec.h"
 
-static int stoppedCallback[2] = { LUA_NOREF, LUA_NOREF };
+static int stoppedCallback[SWITEC_CHANNEL_COUNT] = { LUA_NOREF, LUA_NOREF };
 
 static void callbackFree(lua_State* L, unsigned int id) 
 {
@@ -52,13 +52,13 @@ static void callbackExecute(lua_State* L, unsigned int id)
 
 int platform_switec_exists( unsigned int id )
 {
-  return (id < 2);
+  return (id < SWITEC_CHANNEL_COUNT);
 }
 
 // Lua: setup(id, P1, P2, P3, P4, maxSpeed)
 static int lswitec_setup( lua_State* L )
 {
-  unsigned id;
+  unsigned int id;
   
   id = luaL_checkinteger( L, 1 );
   MOD_CHECK_ID( switec, id );
@@ -95,7 +95,7 @@ static int lswitec_setup( lua_State* L )
 // Lua: close( id )
 static int lswitec_close( lua_State* L )
 {
-  unsigned id;
+  unsigned int id;
   
   id = luaL_checkinteger( L, 1 );
   MOD_CHECK_ID( switec, id );
@@ -109,7 +109,7 @@ static int lswitec_close( lua_State* L )
 // Lua: reset( id )
 static int lswitec_reset( lua_State* L )
 {
-  unsigned id;
+  unsigned int id;
   id = luaL_checkinteger( L, 1 );
   MOD_CHECK_ID( switec, id );
   if (switec_reset( id )) {
@@ -121,7 +121,7 @@ static int lswitec_reset( lua_State* L )
 // Lua: moveto( id, pos [, cb] )
 static int lswitec_moveto( lua_State* L )
 {
-  unsigned id;
+  unsigned int id;
   
   id = luaL_checkinteger( L, 1 );
   MOD_CHECK_ID( switec, id );
@@ -143,7 +143,7 @@ static int lswitec_moveto( lua_State* L )
 // Lua: getpos( id ) -> position, moving
 static int lswitec_getpos( lua_State* L )
 {
-  unsigned id;
+  unsigned int id;
   
   id = luaL_checkinteger( L, 1 );
   MOD_CHECK_ID( switec, id );

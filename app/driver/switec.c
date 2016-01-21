@@ -53,7 +53,7 @@ typedef struct {
   uint16_t minDelay;
 } DATA;
 
-static DATA *data[2];
+static DATA *data[SWITEC_CHANNEL_COUNT];
 static volatile char timerActive;
 
 #define MAXVEL 255
