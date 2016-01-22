@@ -34,9 +34,8 @@ Nothing. If the arguments are in error, or the operation cannot be completed, th
 For all API calls, if the channel number is out of range, then an error will be thrown.
 
 #### Example
-```lua
-rotary.setup(0, 5,6, 7)
-```
+
+    rotary.setup(0, 5,6, 7)
 
 ## rotary.on()
 Sets a callback on specific events.
@@ -54,6 +53,12 @@ If the callback is None or omitted, then the registration is cancelled.
 The callback will be invoked with two arguments when the event happens. The first argument is the 
 current position of the rotary switch, and the second is the eventtype. The position is tracked
 and is represented as a signed 32-bit integer. Increasing values indicate clockwise motion.
+
+#### Example
+
+    rotary.on(0, rotary.ALL, function (pos, type) 
+      print "Position=" .. pos .. " event type=" .. type
+    end)
 
 #### Notes
 
@@ -83,6 +88,10 @@ Gets the current position and press status of the switch
 - `press` A boolean indicating if the switch is currently pressed.
 - `queue` The number of undelivered callbacks (normally 0).
 
+#### Example
+
+    print rotary.getpos(0)
+
 ## rotary.close()
 Releases the resources associated with the rotary switch.
 
@@ -92,9 +101,7 @@ Releases the resources associated with the rotary switch.
 #### Parameters
 - `channel` The rotary module supports three switches. The channel is either 0, 1 or 2.
 
-## Example
+#### Example
 
-    rotary.setup(0, 5,6,7)
-    rotary.on(0, rotary.ALL, function (pos, type) 
-      print "Position=" .. pos .. " event type=" .. type
-    end)
+    rotary.close(0)
+

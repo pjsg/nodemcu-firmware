@@ -48,9 +48,8 @@ Nothing. If the arguments are in error, or the operation cannot be completed, th
 Once a channel is setup, it cannot be re-setup until the needle has stopped moving. 
 
 #### Example
-```lua
-switec.setup(0, 5,6,7,8)
-```
+
+    switec.setup(0, 5,6,7,8)
 
 ## switec.moveto()
 Starts the needle moving to the specified position. If the needle is already moving, then the current
@@ -71,6 +70,12 @@ target location before another `moveto` operation is triggered.
 #### Errors
 The channel must have been setup, otherwise an error is thrown.
 
+#### Example
+
+    switec.moveto(0, 1000, function ()
+        switec.moveto(0, 0)
+    end))
+
 ## switec.reset()
 This sets the current position of the needle as being zero. The needle must be stationary.
 
@@ -82,6 +87,10 @@ This sets the current position of the needle as being zero. The needle must be s
 
 #### Errors
 The channel must have been setup and the needle must not be moving, otherwise an error is thrown.
+
+#### Example
+
+    switec.reset(0)
 
 ## switec.getpos()
 Gets the current position of the needle and whether it is moving.
@@ -96,6 +105,10 @@ Gets the current position of the needle and whether it is moving.
 - `position` the current position of the needle
 - `moving` 0 if the needle is stationary. 1 for clockwise, -1 for anti-clockwise.
 
+#### Example
+
+    print switec.getpos(0)
+
 ## switec.close()
 Releases the resources associated with the stepper.
 
@@ -107,6 +120,10 @@ Releases the resources associated with the stepper.
 
 #### Errors
 The needle must not be moving, otherwise an error is thrown.
+
+#### Example
+
+    switec.close(0)
 
 ## Calibration
 In order to set the zero point correctly, the needle should be driven anti-clockwise until
