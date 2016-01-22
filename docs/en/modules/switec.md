@@ -112,13 +112,11 @@ The needle must not be moving, otherwise an error is thrown.
 In order to set the zero point correctly, the needle should be driven anti-clockwise until
 it runs into the end stop. Then the zero point can be set.
 
-```lua
-switec.setup(0, 5,6,7,8)
-calibration = true
-switec.moveto(0, -1000, function() 
-  switec.reset(0)
-  calibration = false
-end)
-```
+    switec.setup(0, 5,6,7,8)
+    calibration = true
+    switec.moveto(0, -1000, function() 
+      switec.reset(0)
+      calibration = false
+    end)
 
 Other `moveto` operations should not be performed while `calibration` is set.
