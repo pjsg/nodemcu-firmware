@@ -74,7 +74,7 @@ The channel must have been setup, otherwise an error is thrown.
 
     switec.moveto(0, 1000, function ()
         switec.moveto(0, 0)
-    end))
+    end)
 
 ## switec.reset()
 This sets the current position of the needle as being zero. The needle must be stationary.
