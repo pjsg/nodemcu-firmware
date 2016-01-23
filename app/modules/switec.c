@@ -19,7 +19,7 @@
 #include "c_types.h"
 #include "driver/switec.h"
 
-static int stoppedCallback[SWITEC_CHANNEL_COUNT] = { LUA_NOREF, LUA_NOREF };
+static int stoppedCallback[SWITEC_CHANNEL_COUNT] = { LUA_NOREF, LUA_NOREF, LUA_NOREF };
 
 static void callbackFree(lua_State* L, unsigned int id) 
 {
@@ -162,7 +162,7 @@ void lswitec_callback_check(lua_State* L)
 {
   int id;
 
-  for (id = 0; id < 2; id++) {
+  for (id = 0; id < SWITEC_CHANNEL_COUNT; id++) {
     if (stoppedCallback[id] != LUA_NOREF) {
       int32_t pos;
       int32_t dir;
