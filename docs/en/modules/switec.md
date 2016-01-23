@@ -24,7 +24,9 @@ run into the endstops during normal operation as this will make the pointing ina
 
 ##### Note
 
-This module uses the hardware timer interrupt and hence it is incompatible with the PWM module.
+This module uses the hardware timer interrupt and hence it cannot be used at the same time as the PWM module.
+Both modules can be compiled into the same firmware image, but an application can only use one. It may be
+possible for an application to alternate between `switec` and `pwm`, but care must be taken.
 
 ## switec.setup()
 Initialize the nodemcu to talk to a switec X.27 or compatible instrument stepper motor.
