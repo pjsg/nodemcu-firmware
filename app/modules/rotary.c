@@ -11,6 +11,7 @@
 #include "platform.h"
 #include "c_types.h"
 #include "driver/rotary.h"
+#include "../libc/c_stdlib.h"
 
 #define ROTARY_PRESS	1
 #define ROTARY_RELEASE	2
@@ -219,11 +220,11 @@ void lrotary_callback_check(lua_State* L)
 	// We have something to enqueue
 	if ((pos ^ d->lastpos) & 0x7fffffff) {
 	  // Some turning has happened
-	  callbackExecute(L, id, ROTARY_TURN, (pos << 1) >> 1);
+	  callbackCall(L, id, ROTARY_TURN, (pos << 1) >> 1);
 	}
 	if ((pos ^ d->lastpos) & 0x80000000) {
 	  // pressing or releasing has happened
-	  callbackExecute(L, id, (pos & 0x80000000) ? ROTARY_PRESS : ROTARY_RELEASE, (pos << 1) >> 1);
+	  callbackCall(L, id, (pos & 0x80000000) ? ROTARY_PRESS : ROTARY_RELEASE, (pos << 1) >> 1);
 	}
 
 	d->lastpos = pos;

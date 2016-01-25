@@ -79,11 +79,13 @@ int rotary_close(uint32_t channel)
   return 0;
 }
 
-static void ICACHE_RAM_ATTR rotary_interrupt(void) 
+static void ICACHE_RAM_ATTR rotary_interrupt(void *p) 
 {
   // This function really is running at interrupt level with everything
   // else masked off. It should take as little time as necessary.
   //
+  //
+  (void) p;
 
   // This gets the set of pins which have changed status
   uint32 gpio_status = GPIO_REG_READ(GPIO_STATUS_ADDRESS);

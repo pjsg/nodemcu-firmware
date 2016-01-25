@@ -43,6 +43,8 @@ int platform_gpio_write( unsigned pin, unsigned level );
 int platform_gpio_read( unsigned pin );
 void platform_gpio_init( platform_gpio_intr_handler_fn_t cb );
 int platform_gpio_intr_init( unsigned pin, GPIO_INT_TYPE type );
+
+void platform_gpio_intr_dispatcher(void *arg);
 // *****************************************************************************
 // Timer subsection
 
