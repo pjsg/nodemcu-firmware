@@ -19,6 +19,8 @@
 #include "c_types.h"
 #include "driver/switec.h"
 
+// This is the reference to the callbacks for when the pointer
+// stops moving.
 static int stoppedCallback[SWITEC_CHANNEL_COUNT] = { LUA_NOREF, LUA_NOREF, LUA_NOREF };
 
 static void callbackFree(lua_State* L, unsigned int id) 
@@ -72,7 +74,7 @@ static int lswitec_setup( lua_State* L )
   for (i = 0; i < 4; i++) {
     uint32_t gpio = luaL_checkinteger(L, 2 + i);
 
-    if (gpio == 0 || gpio >= GPIO_PIN_NUM) {
+    if (gpio >= GPIO_PIN_NUM) {
       return luaL_error( L, "Pin number out of range." );
     }
 

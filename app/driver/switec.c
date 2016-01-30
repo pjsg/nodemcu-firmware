@@ -122,7 +122,7 @@ in non autoload mode:
                         10 ~ 0x7fffff;
 * Returns      : NONE
 *******************************************************************************/
-static void ICACHE_RAM_ATTR hw_timer_arm(u32 val)
+static __attribute__((always_inline)) inline void hw_timer_arm(u32 val)
 {
     RTC_REG_WRITE(FRC1_LOAD_ADDRESS, US_TO_RTC_TIMER_TICKS(val));
 }
@@ -176,12 +176,14 @@ int switec_close(uint32_t channel)
   data[channel] = NULL;
   c_free(d);
 
+  // See if there are any other channels active
   for (channel = 0; channel < sizeof(data)/sizeof(data[0]); channel++) {
     if (data[channel]) {
       break;
     }
   }
 
+  // If not, then disable the interrupt
   if (channel >= sizeof(data) / sizeof(data[0])) {
     ETS_FRC1_INTR_DISABLE();
   }
@@ -215,11 +217,12 @@ static void ICACHE_RAM_ATTR timer_interrupt(void *p)
   // This function really is running at interrupt level with everything
   // else masked off. It should take as little time as necessary.
   //
-  //
   (void) p;
 
   int i;
   uint32_t delay = 0xffffffff;
+
+  // Loop over the channels to figure out which one needs action
   for (i = 0; i < sizeof(data) / sizeof(data[0]); i++) {
     DATA *d = data[i];
     if (!d || d->stopped) {
@@ -234,6 +237,8 @@ static void ICACHE_RAM_ATTR timer_interrupt(void *p)
       }
       continue;
     }
+
+    // This channel is past it's action time. Need to process it
 
     // Are we done yet?
     if (d->currentStep == d->targetStep && d->vel == 0) {
@@ -251,6 +256,7 @@ static void ICACHE_RAM_ATTR timer_interrupt(void *p)
       d->vel = 1; 
     }
     
+    // Move the pointer by one step in the correct direction
     if (d->dir > 0) {
       stepUp(d);
     } else {
@@ -283,15 +289,19 @@ static void ICACHE_RAM_ATTR timer_interrupt(void *p)
     while (switec_accel_table[row][0] < d->vel) {
       row++;
     }
+
     uint32_t microDelay = switec_accel_table[row][1] << 4;
     if (microDelay < d->minDelay) {
       microDelay = d->minDelay;
     }
+
+    // Figure out when we next need to take action
     d->nextTime = d->nextTime + microDelay;
     if (d->nextTime < now) {
       d->nextTime = now + microDelay;
     }
 
+    // Figure out how long to wait
     int needToWait = d->nextTime - now;
     if (needToWait < delay) {
       delay = needToWait;
@@ -323,23 +333,26 @@ int switec_setup(uint32_t channel, int *pin, int maxDegPerSec )
     }
   }
 
-  if (!data[0] && !data[1] && !data[2]) {
-    // no autoreload
-    hw_timer_init(0);
-  }
-
   DATA *d = (DATA *) c_zalloc(sizeof(DATA));
   if (!d) {
     return -1;
+  }
+
+  if (!data[0] && !data[1] && !data[2]) {
+    // We need to stup the timer as no channel was active before
+    // no autoreload
+    hw_timer_init(0);
   }
 
   data[channel] = d;
   int i;
 
   for (i = 0; i < 4; i++) {
+    // Build the mask for the pins to be output pins
     d->mask |= 1 << pin[i];
 
     int j;
+    // Now build the hi states for the pins according to the 6 phases above
     for (j = 0; j < N_STATES; j++) {
       if (stateMap[j] & (1 << (3 - i))) {
         d->pinstate[j] |= 1 << pin[i];
@@ -411,6 +424,8 @@ int switec_moveto(uint32_t channel, int pos)
   }
 
   d->targetStep = pos;
+
+  // If the pointer is not moving, setup so that we start it
   if (d->stopped) {
     // reset the timer to avoid possible time overflow giving spurious deltas
     d->nextTime = system_get_time() + 1000;
@@ -424,6 +439,7 @@ int switec_moveto(uint32_t channel, int pos)
   return 0;  
 }
 
+// Get the current position, direction and target position
 int switec_getpos(uint32_t channel, int32_t *pos, int32_t *dir, int32_t *target) 
 {
   if (channel >= sizeof(data) / sizeof(data[0])) {

@@ -36,10 +36,10 @@ Initialize the nodemcu to talk to a switec X.27 or compatible instrument stepper
 
 #### Parameters
 - `channel` The switec module supports three stepper motors. The channel is either 0, 1 or 2.
-- `pin1` This is a GPIO number (excluding 0) and connects to pin 1 on the stepper.
-- `pin2` This is a GPIO number (excluding 0) and connects to pin 2 on the stepper.
-- `pin3` This is a GPIO number (excluding 0) and connects to pin 3 on the stepper.
-- `pin4` This is a GPIO number (excluding 0) and connects to pin 4 on the stepper.
+- `pin1` This is a GPIO number and connects to pin 1 on the stepper.
+- `pin2` This is a GPIO number and connects to pin 2 on the stepper.
+- `pin3` This is a GPIO number and connects to pin 3 on the stepper.
+- `pin4` This is a GPIO number and connects to pin 4 on the stepper.
 - `maxDegPerSec` (optional) This can set to limit the maximum slew rate. The default is 600 degrees per second.
 
 #### Returns
