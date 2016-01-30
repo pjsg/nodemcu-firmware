@@ -214,8 +214,8 @@ static int lrotary_getpos( lua_State* L )
 
   int pos = rotary_getevent(id, 0);
 
-  lua_pushnumber(L, (pos & 0x80000000) ? ROTARY_PRESS : ROTARY_RELEASE);
   lua_pushnumber(L, (pos << 1) >> 1);
+  lua_pushnumber(L, (pos & 0x80000000) ? ROTARY_PRESS : ROTARY_RELEASE);
 
   return 2;  
 }
