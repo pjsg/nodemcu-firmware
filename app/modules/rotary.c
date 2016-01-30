@@ -205,6 +205,21 @@ static int lrotary_on( lua_State* L )
   return 0;  
 }
 
+// Lua: getpos( id ) -> pos, PRESS/RELEASE
+static int lrotary_getpos( lua_State* L )
+{
+  unsigned int id;
+  id = luaL_checkinteger( L, 1 );
+  MOD_CHECK_ID( rotary, id );
+
+  int pos = rotary_getevent(id, 0);
+
+  lua_pushnumber(L, (pos & 0x80000000) ? ROTARY_PRESS : ROTARY_RELEASE);
+  lua_pushnumber(L, (pos << 1) >> 1);
+
+  return 2;  
+}
+
 void lrotary_callback_check(lua_State* L)
 {
   int id;
@@ -214,7 +229,7 @@ void lrotary_callback_check(lua_State* L)
 
     if (d) {
       // This chnnel is open
-      int pos = rotary_getevent(id);
+      int pos = rotary_getevent(id, 1);
 
       if (pos != d->lastpos) {
 	// We have something to enqueue
@@ -237,11 +252,12 @@ void lrotary_callback_check(lua_State* L)
 static const LUA_REG_TYPE rotary_map[] = {
   { LSTRKEY( "setup" ),    LFUNCVAL( lrotary_setup ) },
   { LSTRKEY( "close" ),    LFUNCVAL( lrotary_close ) },
-  { LSTRKEY( "on" ),       LFUNCVAL( lrotary_on ) },
-  { LSTRKEY( "TURN" ),     LNUMVAL( ROTARY_TURN ) },
-  { LSTRKEY( "PRESS" ),    LNUMVAL( ROTARY_PRESS ) },
+  { LSTRKEY( "on" ),       LFUNCVAL( lrotary_on    ) },
+  { LSTRKEY( "getpos" ),   LFUNCVAL( lrotary_getpos) },
+  { LSTRKEY( "TURN" ),     LNUMVAL( ROTARY_TURN    ) },
+  { LSTRKEY( "PRESS" ),    LNUMVAL( ROTARY_PRESS   ) },
   { LSTRKEY( "RELEASE" ),  LNUMVAL( ROTARY_RELEASE ) },
-  { LSTRKEY( "ALL" ),      LNUMVAL( ROTARY_ALL ) },
+  { LSTRKEY( "ALL" ),      LNUMVAL( ROTARY_ALL     ) },
 
   { LNILKEY, LNILVAL }
 };

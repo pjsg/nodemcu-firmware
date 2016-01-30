@@ -36,7 +36,6 @@ typedef struct {
   int8_t   phaseA_pin;
   int8_t   phaseB_pin;
   int8_t   press_pin;
-  uint32_t current;
   uint32_t pinMask;
   uint32_t phaseA;
   uint32_t phaseB;
@@ -204,7 +203,7 @@ int rotary_setup(uint32_t channel, int phaseA, int phaseB, int press, int tasknu
   return 0;
 }
 
-int32_t rotary_getevent(uint32_t channel) 
+int32_t rotary_getevent(uint32_t channel, int advance) 
 {
   if (channel >= sizeof(data) / sizeof(data[0])) {
     return 0;
@@ -218,7 +217,9 @@ int32_t rotary_getevent(uint32_t channel)
 
   int32_t result = GET_READ_STATUS(d);
 
-  ADVANCE_IF_POSSIBLE(d);
+  if (advance) {
+    ADVANCE_IF_POSSIBLE(d);
+  }
 
   return result;
 }

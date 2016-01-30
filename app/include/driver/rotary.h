@@ -10,7 +10,7 @@
 
 int rotary_setup(uint32_t channel, int phaseA, int phaseB, int press, int tasknumber);
 
-int32_t rotary_getevent(uint32_t channel);
+int32_t rotary_getevent(uint32_t channel, int advance);
 
 int rotary_close(uint32_t channel);
 
