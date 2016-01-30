@@ -102,13 +102,13 @@ static void ICACHE_RAM_ATTR rotary_interrupt(void *p)
 
     uint32_t lastStatus = GET_LAST_STATUS(d);
 
-    uint32_t newStatus = STATUS_IS_PRESSED(lastStatus) ? 0x8000000 : 0;
+    uint32_t newStatus = (bits & d->press) ? 0x8000000 : 0;
 
     int micropos = 0;
-    if (gpio_status & d->phaseB) {
+    if (bits & d->phaseB) {
       micropos = 1;
     }
-    if (gpio_status & d->phaseA) {
+    if (bits & d->phaseA) {
       micropos ^= 3;
     }
 
