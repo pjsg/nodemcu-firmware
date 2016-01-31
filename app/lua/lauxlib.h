@@ -82,6 +82,8 @@ LUALIB_API int (luaL_checkoption) (lua_State *L, int narg, const char *def,
 LUALIB_API int (luaL_ref) (lua_State *L, int t);
 LUALIB_API void (luaL_unref) (lua_State *L, int t, int ref);
 
+LUALIB_API void (luaL_assertfail)(const char *file, int line, const char *message);
+
 #ifdef LUA_CROSS_COMPILER
 LUALIB_API int (luaL_loadfile) (lua_State *L, const char *filename);
 #else

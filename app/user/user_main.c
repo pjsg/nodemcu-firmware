@@ -203,9 +203,9 @@ void user_init(void)
 
     uart_init (br, br, USER_TASK_PRIO_0, SIG_UARTINPUT);
 
-    #ifndef NODE_DEBUG
+#ifndef DEVELOP_VERSION
     system_set_os_print(0);
-    #endif
+#endif
 
     system_init_done_cb(nodemcu_init);
 }

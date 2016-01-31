@@ -3,6 +3,7 @@
 #include "module.h"
 #include "lauxlib.h"
 #include "platform.h"
+#include "gpio_intr.h"
 #include "rom.h"
 
 #include "c_types.h"
