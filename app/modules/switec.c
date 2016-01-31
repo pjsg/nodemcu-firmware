@@ -183,7 +183,7 @@ static void lrotary_task(os_param_t param, uint8_t prio)
   (void) param;
   (void) prio;
 
-  lswitec_dequeue(NULL);
+  lswitec_dequeue(lua_getstate());
 }
 
 

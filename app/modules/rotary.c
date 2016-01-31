@@ -285,7 +285,7 @@ static void lrotary_task(os_param_t param, uint8_t prio)
   (void) param;
   (void) prio;
 
-  lrotary_dequeue(NULL);
+  lrotary_dequeue(lua_getstate());
 }
 
 // Module function map
