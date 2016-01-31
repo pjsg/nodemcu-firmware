@@ -160,7 +160,7 @@ static int lswitec_getpos( lua_State* L )
   return 2;
 }
 
-void lswitec_callback_check(lua_State* L)
+static void lswitec_dequeue(lua_State* L)
 {
   int id;
 
@@ -178,6 +178,15 @@ void lswitec_callback_check(lua_State* L)
   }
 }
 
+static void lrotary_task(os_param_t param, uint8_t prio) 
+{
+  (void) param;
+  (void) prio;
+
+  lswitec_dequeue(NULL);
+}
+
+
 // Module function map
 static const LUA_REG_TYPE switec_map[] = {
   { LSTRKEY( "setup" ),    LFUNCVAL( lswitec_setup ) },
@@ -185,6 +194,8 @@ static const LUA_REG_TYPE switec_map[] = {
   { LSTRKEY( "reset" ),    LFUNCVAL( lswitec_reset ) },
   { LSTRKEY( "moveto" ),   LFUNCVAL( lswitec_moveto) },
   { LSTRKEY( "getpos" ),   LFUNCVAL( lswitec_getpos) },
+  { LSTRKEY( "dequeue" ),  LFUNCVAL( lswitec_dequeue) },
+
   { LNILKEY, LNILVAL }
 };
 
