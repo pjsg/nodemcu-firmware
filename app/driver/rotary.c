@@ -12,6 +12,7 @@
 #include "driver/rotary.h"
 #include "gpio_intr.h"
 #include "user_interface.h"
+#include "ets_sys.h"
 
 //
 //  Queue is empty if read == write. 
@@ -255,9 +256,18 @@ int32_t rotary_getevent(uint32_t channel)
     return 0;
   }
 
-  int32_t result = GET_READ_STATUS(d);
+  int32_t result;
+  
+  ETS_GPIO_INTR_DISABLE();
 
-  ADVANCE_IF_POSSIBLE(d);
+  if (HAS_QUEUED_DATA(d)) {
+    result = GET_READ_STATUS(d);
+    d->readOffset++;
+  } else {
+    result = GET_LAST_STATUS(d);
+  }
+
+  ETS_GPIO_INTR_ENABLE();
 
   return result;
 }

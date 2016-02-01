@@ -45,8 +45,8 @@ static void callbackExecute(lua_State* L, unsigned int id)
   if (stoppedCallback[id] != LUA_NOREF) {
     int callback = stoppedCallback[id];
     lua_rawgeti(L, LUA_REGISTRYINDEX, callback);
-    stoppedCallback[id] = LUA_NOREF;
-    luaL_unref(L, LUA_REGISTRYINDEX, callback);
+
+    callbackFree(L, id);
 
     lua_call(L, 0, 0);
   }
@@ -160,7 +160,7 @@ static int lswitec_getpos( lua_State* L )
   return 2;
 }
 
-static void lswitec_dequeue(lua_State* L)
+static int lswitec_dequeue(lua_State* L)
 {
   int id;
 
@@ -176,6 +176,8 @@ static void lswitec_dequeue(lua_State* L)
       }
     }
   }
+
+  return 0;
 }
 
 static void lrotary_task(os_param_t param, uint8_t prio) 
