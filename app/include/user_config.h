@@ -23,7 +23,7 @@
 #define COAP_DEBUG
 //#define BIT_RATE_DEFAULT BIT_RATE_74880
 #define BIT_RATE_DEFAULT BIT_RATE_9600
-void (luaL_assertfail)(const char *file, int line, const char *message);
+extern void luaL_assertfail(const char *file, int line, const char *message);
 #define lua_assert(x)    ((x) ? (void) 0 : luaL_assertfail(__FILE__, __LINE__, #x))
 #else
 #define BIT_RATE_DEFAULT BIT_RATE_9600

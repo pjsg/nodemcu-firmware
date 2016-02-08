@@ -8,7 +8,7 @@
 
 #define SWITEC_CHANNEL_COUNT	3
 
-int switec_setup(uint32_t channel, int *pin, int max_deg_per_sec );
+int switec_setup(uint32_t channel, int *pin, int max_deg_per_sec, task_handle_t taskNumber );
 
 int switec_close(uint32_t channel);
 

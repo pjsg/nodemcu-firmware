@@ -252,7 +252,7 @@ static int lrotary_getqueue( lua_State* L )
 }
 #endif
 
-static void lrotary_callback_check(lua_State* L)
+static int lrotary_dequeue(lua_State* L)
 {
   int id;
 
@@ -280,14 +280,17 @@ static void lrotary_callback_check(lua_State* L)
   }
 }
 
-static void rotary_callback(uint32_t p, uint8_t prio)
+static void lrotary_task(os_param_t param, uint8_t prio) 
 {
-  lrotary_callback_check(lua_getstate());
+  (void) param;
+  (void) prio;
+
+  lrotary_dequeue(lua_getstate());
 }
 
 static int rotary_open(lua_State *L) 
 {
-  tasknumber = task_get_id(rotary_callback);
+  tasknumber = task_get_id(lrotary_task);
   return 0;
 }
 
@@ -297,8 +300,9 @@ static const LUA_REG_TYPE rotary_map[] = {
   { LSTRKEY( "close" ),    LFUNCVAL( lrotary_close ) },
   { LSTRKEY( "on" ),       LFUNCVAL( lrotary_on    ) },
   { LSTRKEY( "getpos" ),   LFUNCVAL( lrotary_getpos) },
-#ifdef ROARTY_DEBUG
+#if 1
   { LSTRKEY( "getqueue" ), LFUNCVAL( lrotary_getqueue) },
+  { LSTRKEY( "dequeue" ),  LFUNCVAL( lrotary_dequeue) },
 #endif
   { LSTRKEY( "TURN" ),     LNUMVAL( ROTARY_TURN    ) },
   { LSTRKEY( "PRESS" ),    LNUMVAL( ROTARY_PRESS   ) },

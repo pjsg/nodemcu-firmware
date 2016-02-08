@@ -22,6 +22,7 @@
 #include "os_type.h"
 #include "osapi.h"
 #include "user_interface.h"
+#include "task/task.h"
 
 #define N_STATES 6
 //
@@ -55,6 +56,7 @@ typedef struct {
   uint16_t vel;
   uint16_t maxVel;
   uint16_t minDelay;
+  task_handle_t taskNumber;
 } DATA;
 
 static DATA *data[SWITEC_CHANNEL_COUNT];
@@ -246,6 +248,7 @@ static void ICACHE_RAM_ATTR timer_interrupt(void *p)
       d->dir = 0;
       // TODO: We need to post a message to say that the motion is complete
       // system_os_post(LUA_TASK, , i);
+      task_post_low(d->taskNumber, 0);
       continue;
     }
 
@@ -321,7 +324,7 @@ static void ICACHE_RAM_ATTR timer_interrupt(void *p)
 
 
 // The pin numbers are actual platform GPIO numbers
-int switec_setup(uint32_t channel, int *pin, int maxDegPerSec )
+int switec_setup(uint32_t channel, int *pin, int maxDegPerSec, task_handle_t taskNumber )
 {
   if (channel >= sizeof(data) / sizeof(data[0])) {
     return -1;
@@ -365,6 +368,7 @@ int switec_setup(uint32_t channel, int *pin, int maxDegPerSec )
     maxDegPerSec = 400;
   }
   d->minDelay = 1000000 / (3 * maxDegPerSec);
+  d->taskNumber = taskNumber;
 
 #ifdef SWITEC_DEBUG
   for (i = 0; i < 4; i++) {

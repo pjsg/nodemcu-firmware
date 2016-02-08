@@ -17,11 +17,13 @@
 #include "lauxlib.h"
 #include "platform.h"
 #include "c_types.h"
+#include "task/task.h"
 #include "driver/switec.h"
 
 // This is the reference to the callbacks for when the pointer
 // stops moving.
 static int stoppedCallback[SWITEC_CHANNEL_COUNT] = { LUA_NOREF, LUA_NOREF, LUA_NOREF };
+static task_handle_t tasknumber;
 
 static void callbackFree(lua_State* L, unsigned int id) 
 {
@@ -45,8 +47,7 @@ static void callbackExecute(lua_State* L, unsigned int id)
   if (stoppedCallback[id] != LUA_NOREF) {
     int callback = stoppedCallback[id];
     lua_rawgeti(L, LUA_REGISTRYINDEX, callback);
-    stoppedCallback[id] = LUA_NOREF;
-    luaL_unref(L, LUA_REGISTRYINDEX, callback);
+    callbackFree(L, id);
 
     lua_call(L, 0, 0);
   }
@@ -88,7 +89,7 @@ static int lswitec_setup( lua_State* L )
     degPerSec = luaL_checkinteger(L, 6);
   }
 
-  if (switec_setup(id, pin, degPerSec)) {
+  if (switec_setup(id, pin, degPerSec, tasknumber)) {
     return luaL_error(L, "Unable to setup stepper.");
   }
   return 0;  
@@ -160,7 +161,7 @@ static int lswitec_getpos( lua_State* L )
   return 2;
 }
 
-void lswitec_callback_check(lua_State* L)
+static int lswitec_dequeue(lua_State* L)
 {
   int id;
 
@@ -176,7 +177,27 @@ void lswitec_callback_check(lua_State* L)
       }
     }
   }
+
+  return 0;
 }
+
+static void lswitec_task(os_param_t param, uint8_t prio) 
+{
+  (void) param;
+  (void) prio;
+
+  lswitec_dequeue(lua_getstate());
+}
+
+static int switec_open(lua_State *L)
+{
+  (void) L;
+
+  tasknumber = task_get_id(lswitec_task);
+
+  return 0;
+}
+
 
 // Module function map
 static const LUA_REG_TYPE switec_map[] = {
@@ -185,7 +206,9 @@ static const LUA_REG_TYPE switec_map[] = {
   { LSTRKEY( "reset" ),    LFUNCVAL( lswitec_reset ) },
   { LSTRKEY( "moveto" ),   LFUNCVAL( lswitec_moveto) },
   { LSTRKEY( "getpos" ),   LFUNCVAL( lswitec_getpos) },
+  { LSTRKEY( "dequeue" ),  LFUNCVAL( lswitec_dequeue) },
+
   { LNILKEY, LNILVAL }
 };
 
-NODEMCU_MODULE(SWITEC, "switec", switec_map, NULL);
+NODEMCU_MODULE(SWITEC, "switec", switec_map, switec_open);

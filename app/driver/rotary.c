@@ -13,6 +13,7 @@
 #include "gpio_intr.h"
 #include "user_interface.h"
 #include "task/task.h"
+#include "ets_sys.h"
 
 //
 //  Queue is empty if read == write. 
@@ -185,7 +186,7 @@ static void ICACHE_RAM_ATTR rotary_interrupt(uint32_t bits)
 }
 
 // The pin numbers are actual platform GPIO numbers
-int rotary_setup(uint32_t channel, int phaseA, int phaseB, int press, int tasknumber )
+int rotary_setup(uint32_t channel, int phaseA, int phaseB, int press, task_handle_t tasknumber )
 {
   if (channel >= sizeof(data) / sizeof(data[0])) {
     return -1;
@@ -259,9 +260,18 @@ int32_t rotary_getevent(uint32_t channel)
     return 0;
   }
 
-  int32_t result = GET_READ_STATUS(d);
+  int32_t result;
+  
+  ETS_GPIO_INTR_DISABLE();
 
-  ADVANCE_IF_POSSIBLE(d);
+  if (HAS_QUEUED_DATA(d)) {
+    result = GET_READ_STATUS(d);
+    d->readOffset++;
+  } else {
+    result = GET_LAST_STATUS(d);
+  }
+
+  ETS_GPIO_INTR_ENABLE();
 
   return result;
 }
