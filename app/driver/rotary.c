@@ -12,6 +12,7 @@
 #include "driver/rotary.h"
 #include "gpio_intr.h"
 #include "user_interface.h"
+#include "task/task.h"
 
 //
 //  Queue is empty if read == write. 
@@ -84,13 +85,13 @@ int rotary_close(uint32_t channel)
   return 0;
 }
 
-static void ICACHE_RAM_ATTR rotary_interrupt(void *p) 
+static void ICACHE_RAM_ATTR rotary_interrupt(uint32_t bits) 
 {
   // This function really is running at interrupt level with everything
   // else masked off. It should take as little time as necessary.
   //
   //
-  (void) p;
+  (void) bits;
 
 #ifdef ROTARY_DEBUG
   rotary_interrupt_count++;
@@ -172,7 +173,7 @@ static void ICACHE_RAM_ATTR rotary_interrupt(void *p)
 	  || STATUS_IS_PRESSED(lastStatus ^ GET_PREV_STATUS(d))) {
 	if (HAS_QUEUE_SPACE(d)) {
 	  QUEUE_STATUS(d, newStatus);
-	  // post task message to d->tasknumber
+	  task_post_medium(d->tasknumber, 0);
 	} else {
 	  REPLACE_STATUS(d, newStatus);
 	}
@@ -181,10 +182,6 @@ static void ICACHE_RAM_ATTR rotary_interrupt(void *p)
       }
     }
   }
-
-#ifdef GPIO_INTERRUPT_ENABLE
-  platform_gpio_intr_dispatcher(gpio_intr_callback);
-#endif
 }
 
 // The pin numbers are actual platform GPIO numbers
@@ -198,10 +195,6 @@ int rotary_setup(uint32_t channel, int phaseA, int phaseB, int press, int tasknu
     if (rotary_close(channel)) {
       return -1;
     }
-  }
-
-  if (!data[0] && !data[1] && !data[2]) {
-    ETS_GPIO_INTR_ATTACH(rotary_interrupt, 0);
   }
 
   DATA *d = (DATA *) c_zalloc(sizeof(DATA));
@@ -238,6 +231,17 @@ int rotary_setup(uint32_t channel, int phaseA, int phaseB, int press, int tasknu
   for (i = GPIO_OUT_ADDRESS; i < GPIO_OUT_ADDRESS + 0x60; i += 16) {
     c_printf("0x%02x:  %08x %08x %08x %08x\n", i, GPIO_REG_READ(i), GPIO_REG_READ(i + 4), GPIO_REG_READ(i + 8), GPIO_REG_READ(i + 12));
   }
+
+  uint32_t bits = 0;
+  for (int i = 0; i < ROTARY_CHANNEL_COUNT; i++) {
+    DATA *dd = data[i];
+
+    if (dd) {
+      bits = bits | dd->pinMask;
+    }
+  }
+
+  platform_gpio_register_callback(bits, rotary_interrupt);
 
   return 0;
 }

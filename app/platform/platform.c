@@ -19,6 +19,16 @@
 #define NO_INTR_CODE inline
 #endif
 
+#ifdef GPIO_INTERRUPT_ENABLE
+typedef struct _GPIO_HOOK {
+  uint32_t gpio_bits;
+  void (*callback)(uint32_t bits);
+  struct _GPIO_HOOK *next;
+} GPIO_HOOK;
+
+static GPIO_HOOK* gpio_hooks;
+#endif
+
 static void pwms_init();
 
 int platform_init()
@@ -165,6 +175,14 @@ static void ICACHE_RAM_ATTR platform_gpio_intr_dispatcher (void *dummy){
   uint32 j=0;
   uint32 gpio_status = GPIO_REG_READ(GPIO_STATUS_ADDRESS);
   UNUSED(dummy);
+
+  GPIO_HOOK *hooks = gpio_hooks;
+  for (; hooks; hooks = hooks->next) {
+    if (gpio_status & hooks->gpio_bits) {
+      hooks->callback(gpio_status & hooks->gpio_bits);
+    }
+  }
+
   /*
    * gpio_status is a bit map where bit 0 is set if unmapped gpio pin 0 (pin3) has 
    * triggered the ISR. bit 1 if unmapped gpio pin 1 (pin10=U0TXD), etc.  Since this
@@ -185,8 +203,8 @@ static void ICACHE_RAM_ATTR platform_gpio_intr_dispatcher (void *dummy){
           pin_trigger[i] = false;
           task_post_high (gpio_task_handle, (i<<1) + level);
         }
-       // Interrupts are re-enabled but any interrupt occuring before pin_trigger[i] is reset will be ignored.
-      gpio_pin_intr_state_set(GPIO_ID_PIN(j), pin_int_type[i]);  
+        // Interrupts are re-enabled but any interrupt occuring before pin_trigger[i] is reset will be ignored.
+        gpio_pin_intr_state_set(GPIO_ID_PIN(j), pin_int_type[i]);  
       }
     }
   }
@@ -215,6 +233,31 @@ void ICACHE_RAM_ATTR platform_gpio_intr_init( unsigned pin, GPIO_INT_TYPE type )
     gpio_pin_intr_state_set(GPIO_ID_PIN(pin_num[pin]), type);
     ETS_GPIO_INTR_ENABLE();
   }
+}
+
+int platform_gpio_register_callback(uint32_t gpio_bits, void (*callback)(uint32_t)) 
+{
+  GPIO_HOOK *hook;
+
+  for (hook = gpio_hooks; hook; hook = hook->next) {
+    if (hook->callback == callback) {
+      hook->gpio_bits = gpio_bits;
+      return 1;
+    }
+  }
+
+  hook = (GPIO_HOOK *) c_zalloc(sizeof(GPIO_HOOK));
+
+  if (!hook) {
+    return 0;
+  }
+
+  hook->gpio_bits = gpio_bits;
+  hook->callback = callback;
+  hook->next = gpio_hooks;
+  gpio_hooks = hook;
+
+  return 1;
 }
 #endif
 

@@ -252,7 +252,7 @@ static int lrotary_getqueue( lua_State* L )
 }
 #endif
 
-void lrotary_callback_check(lua_State* L)
+static void lrotary_callback_check(lua_State* L)
 {
   int id;
 
@@ -280,6 +280,16 @@ void lrotary_callback_check(lua_State* L)
   }
 }
 
+static void rotary_callback(void *p, uint8_t prio)
+{
+  lrotary_callback_check(lua_getstate());
+}
+
+static void rotary_open(void) 
+{
+  tasknumber = task_get_id(rotary_callback);
+}
+
 // Module function map
 static const LUA_REG_TYPE rotary_map[] = {
   { LSTRKEY( "setup" ),    LFUNCVAL( lrotary_setup ) },
@@ -297,4 +307,4 @@ static const LUA_REG_TYPE rotary_map[] = {
   { LNILKEY, LNILVAL }
 };
 
-NODEMCU_MODULE(ROTARY, "rotary", rotary_map, NULL);
+NODEMCU_MODULE(ROTARY, "rotary", rotary_map, rotary_open);

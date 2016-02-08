@@ -136,7 +136,7 @@ u8 req:
                         1,  autoload mode,
 * Returns      : NONE
 *******************************************************************************/
-static void ICACHE_FLASH_ATTR hw_timer_init(u8 req)
+static void hw_timer_init(u8 req)
 {
     if (req == 1) {
         RTC_REG_WRITE(FRC1_CTRL_ADDRESS,

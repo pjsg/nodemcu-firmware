@@ -42,8 +42,7 @@ int platform_gpio_mode( unsigned pin, unsigned mode, unsigned pull );
 int platform_gpio_write( unsigned pin, unsigned level );
 int platform_gpio_read( unsigned pin );
 
-void platform_gpio_intr_dispatcher(void *arg);
-
+int platform_gpio_register_callback(uint32_t gpio_bits, void (*callback)(uint32_t));
 void platform_gpio_init( task_handle_t gpio_task );
 void platform_gpio_intr_init( unsigned pin, GPIO_INT_TYPE type );
 // *****************************************************************************
