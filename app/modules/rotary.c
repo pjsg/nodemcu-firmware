@@ -26,7 +26,7 @@ typedef struct {
 } DATA;
 
 static DATA *data[ROTARY_CHANNEL_COUNT];
-static int tasknumber;
+static task_handle_t tasknumber;
 
 static void callbackFreeOne(lua_State *L, int *cbPtr) 
 {
@@ -280,14 +280,15 @@ static void lrotary_callback_check(lua_State* L)
   }
 }
 
-static void rotary_callback(void *p, uint8_t prio)
+static void rotary_callback(uint32_t p, uint8_t prio)
 {
   lrotary_callback_check(lua_getstate());
 }
 
-static void rotary_open(void) 
+static int rotary_open(lua_State *L) 
 {
   tasknumber = task_get_id(rotary_callback);
+  return 0;
 }
 
 // Module function map

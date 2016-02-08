@@ -10,7 +10,7 @@
 
 #define ROTARY_DEBUG 1
 
-int rotary_setup(uint32_t channel, int phaseA, int phaseB, int press, int tasknumber);
+int rotary_setup(uint32_t channel, int phaseA, int phaseB, int press, task_handle_t tasknumber);
 
 int32_t rotary_getevent(uint32_t channel);
 
