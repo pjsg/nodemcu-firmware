@@ -18,6 +18,8 @@ int32_t rotary_getevent(uint32_t channel);
 size_t rotary_getstate(uint32_t channel, int32_t *buffer, size_t maxlen);
 #endif
 
+int rotary_getpos(uint32_t channel);
+
 int rotary_close(uint32_t channel);
 
 #endif

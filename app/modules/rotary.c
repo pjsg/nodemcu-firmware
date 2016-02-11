@@ -212,14 +212,11 @@ static int lrotary_getpos( lua_State* L )
   id = luaL_checkinteger( L, 1 );
   MOD_CHECK_ID( rotary, id );
 
-  int32_t buffer[16];
-  size_t i = rotary_getstate(id, buffer, sizeof(buffer) / sizeof(buffer[0]));
+  int pos = rotary_getpos(id);
 
-  if (!i) {
+  if (pos == -1) {
     return 0;
   }
-
-  int pos = buffer[i - 1];
 
   lua_pushnumber(L, (pos << 1) >> 1);
   lua_pushnumber(L, (pos & 0x80000000) ? ROTARY_PRESS : ROTARY_RELEASE);
@@ -250,6 +247,7 @@ static int lrotary_getqueue( lua_State* L )
 
   return 1 + i * 2;  
 }
+#endif
 
 static int lrotary_dequeue(lua_State* L)
 {
@@ -278,7 +276,6 @@ static int lrotary_dequeue(lua_State* L)
     }
   }
 }
-#endif
 
 static void lrotary_task(os_param_t param, uint8_t prio) 
 {

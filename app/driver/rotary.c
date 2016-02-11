@@ -54,6 +54,8 @@ typedef struct {
 
 static DATA *data[ROTARY_CHANNEL_COUNT];
 
+static void setGpioBits(void);
+
 static void rotary_clear_pin(int pin) 
 {
   if (pin >= 0) {
@@ -275,6 +277,21 @@ int32_t rotary_getevent(uint32_t channel)
   ETS_GPIO_INTR_ENABLE();
 
   return result;
+}
+
+int rotary_getpos(uint32_t channel)
+{
+  if (channel >= sizeof(data) / sizeof(data[0])) {
+    return -1;
+  }
+
+  DATA *d = data[channel];
+
+  if (!d) {
+    return -1;
+  }
+
+  return d->queue[(d->writeOffset - 1) & (QUEUE_SIZE - 1)];
 }
 
 #ifdef ROTARY_DEBUG
