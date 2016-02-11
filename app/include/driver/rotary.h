@@ -8,13 +8,15 @@
 
 #define ROTARY_CHANNEL_COUNT	3
 
-#define ROTARY_DEBUG 1
+//#define ROTARY_DEBUG 1
 
 int rotary_setup(uint32_t channel, int phaseA, int phaseB, int press, task_handle_t tasknumber);
 
 int32_t rotary_getevent(uint32_t channel);
 
+#ifdef ROTARY_DEBUG
 size_t rotary_getstate(uint32_t channel, int32_t *buffer, size_t maxlen);
+#endif
 
 int rotary_close(uint32_t channel);
 

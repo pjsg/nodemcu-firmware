@@ -250,7 +250,6 @@ static int lrotary_getqueue( lua_State* L )
 
   return 1 + i * 2;  
 }
-#endif
 
 static int lrotary_dequeue(lua_State* L)
 {
@@ -279,6 +278,7 @@ static int lrotary_dequeue(lua_State* L)
     }
   }
 }
+#endif
 
 static void lrotary_task(os_param_t param, uint8_t prio) 
 {
@@ -300,7 +300,7 @@ static const LUA_REG_TYPE rotary_map[] = {
   { LSTRKEY( "close" ),    LFUNCVAL( lrotary_close ) },
   { LSTRKEY( "on" ),       LFUNCVAL( lrotary_on    ) },
   { LSTRKEY( "getpos" ),   LFUNCVAL( lrotary_getpos) },
-#if 1
+#ifdef ROTARY_DEBUG
   { LSTRKEY( "getqueue" ), LFUNCVAL( lrotary_getqueue) },
   { LSTRKEY( "dequeue" ),  LFUNCVAL( lrotary_dequeue) },
 #endif

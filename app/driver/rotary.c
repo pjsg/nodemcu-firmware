@@ -83,6 +83,8 @@ int rotary_close(uint32_t channel)
 
   c_free(d);
 
+  setGpioBits();
+
   return 0;
 }
 
@@ -227,24 +229,23 @@ int rotary_setup(uint32_t channel, int phaseA, int phaseB, int press, task_handl
 
   d->pinMask = d->phaseA | d->phaseB | d->press;
 
-  c_printf("Mask=0x%x\n", d->pinMask);
+  setGpioBits();
 
-  for (i = GPIO_OUT_ADDRESS; i < GPIO_OUT_ADDRESS + 0x60; i += 16) {
-    c_printf("0x%02x:  %08x %08x %08x %08x\n", i, GPIO_REG_READ(i), GPIO_REG_READ(i + 4), GPIO_REG_READ(i + 8), GPIO_REG_READ(i + 12));
-  }
+  return 0;
+}
 
+static void setGpioBits()
+{
   uint32_t bits = 0;
   for (int i = 0; i < ROTARY_CHANNEL_COUNT; i++) {
-    DATA *dd = data[i];
+    DATA *d = data[i];
 
-    if (dd) {
-      bits = bits | dd->pinMask;
+    if (d) {
+      bits = bits | d->pinMask;
     }
   }
 
   platform_gpio_register_callback(bits, rotary_interrupt);
-
-  return 0;
 }
 
 // Get the oldest event in the queue and remove it (if possible)
