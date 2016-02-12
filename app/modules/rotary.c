@@ -147,7 +147,6 @@ static int lrotary_setup( lua_State* L )
   luaL_argcheck(L, platform_gpio_exists(phaseA) && phaseA > 0, 1, "Invalid pin");
   int phaseB = luaL_checkinteger(L, 3);
   luaL_argcheck(L, platform_gpio_exists(phaseB) && phaseB > 0, 2, "Invalid pin");
-  int phaseB = luaL_checkinteger(L, 3);
   int press;
   if (lua_gettop(L) >= 4) {
     press = luaL_checkinteger(L, 4);
@@ -280,7 +279,7 @@ static void lrotary_task(os_param_t param, uint8_t prio)
   (void) param;
   (void) prio;
 
-  uint8_t *taskQueuePtr = (uint8_t) param;
+  uint8_t *taskQueuePtr = (uint8_t*) param;
   if (taskQueuePtr) {
     // Signal that new events may need another task post
     *taskQueuePtr = 0;

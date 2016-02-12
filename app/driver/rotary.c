@@ -185,7 +185,7 @@ static void ICACHE_RAM_ATTR rotary_interrupt(uint32_t bits)
 	if (HAS_QUEUE_SPACE(d)) {
 	  QUEUE_STATUS(d, newStatus);
 	  if (!taskQueued) {
-	    if (task_post_medium(d->tasknumber, &taskQueued)) {
+	    if (task_post_medium(d->tasknumber, (os_param_t) &taskQueued)) {
 	      taskQueued = 1;
 	    }
 	  }
