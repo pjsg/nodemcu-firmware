@@ -75,9 +75,7 @@ static int lswitec_setup( lua_State* L )
   for (i = 0; i < 4; i++) {
     uint32_t gpio = luaL_checkinteger(L, 2 + i);
 
-    if (gpio >= GPIO_PIN_NUM) {
-      return luaL_error( L, "Pin number out of range." );
-    }
+    luaL_argcheck(L, platform_gpio_exists(gpio), 2 + i, "Invalid pin");
 
     pin[i] = pin_num[gpio];
 

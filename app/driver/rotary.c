@@ -2,7 +2,12 @@
  * Driver for interfacing to cheap rotary switches that
  * have a quadrature output with an optional press button
  *
- * NodeMcu integration by Philip Gladstone, N1DQ
+ * This sets up the relevant gpio as interrupt and then keeps track of
+ * the position of the switch in software. Changes are enqueued to task
+ * level and a task message posted when required. If the queue fills up
+ * then moves are ignored, but the last press/release will be included.
+ *
+ * Philip Gladstone, N1DQ
  */
 
 #include "platform.h"
@@ -53,6 +58,8 @@ typedef struct {
 } DATA;
 
 static DATA *data[ROTARY_CHANNEL_COUNT];
+
+static uint8_t taskQueued;
 
 static void setGpioBits(void);
 
@@ -124,6 +131,8 @@ static void ICACHE_RAM_ATTR rotary_interrupt(uint32_t bits)
 
     newStatus = lastStatus & 0x80000000;
 
+    // This is the debounce logic for the press switch. We ignore changes
+    // for 10ms after a change.
     if (now - d->last_press_change_time > 10 * 1000) {
       newStatus = (bits & d->press) ? 0 : 0x80000000;
       if (gpio_status & d->press) {
@@ -137,20 +146,17 @@ static void ICACHE_RAM_ATTR rotary_interrupt(uint32_t bits)
     //  0   0   => 2
     //  0   1   => 3
 
-    int micropos = 0;
+    int micropos = 2;
     if (bits & d->phaseB) {
-      micropos = 1;
+      micropos = 3;
     }
     if (bits & d->phaseA) {
       micropos ^= 3;
     }
 
-    // This is so when both inputs are high, there is a zero output
-    micropos -= 2;
-
     int32_t rotary_pos = lastStatus;
 
-    switch ((micropos - (lastStatus & 3)) & 3) {
+    switch ((micropos - lastStatus) & 3) {
       case 0:
         // No change, nothing to do
 	break;
@@ -164,7 +170,7 @@ static void ICACHE_RAM_ATTR rotary_interrupt(uint32_t bits)
 	break;
       default:
         // We missed an interrupt
-	// We will ignore...
+	// We will ignore... but mark it.
 	rotary_pos += 1000000;
 	break;
     }
@@ -178,7 +184,11 @@ static void ICACHE_RAM_ATTR rotary_interrupt(uint32_t bits)
 	  || STATUS_IS_PRESSED(lastStatus ^ GET_PREV_STATUS(d))) {
 	if (HAS_QUEUE_SPACE(d)) {
 	  QUEUE_STATUS(d, newStatus);
-	  task_post_medium(d->tasknumber, 0);
+	  if (!taskQueued) {
+	    if (task_post_medium(d->tasknumber, &taskQueued)) {
+	      taskQueued = 1;
+	    }
+	  }
 	} else {
 	  REPLACE_STATUS(d, newStatus);
 	}

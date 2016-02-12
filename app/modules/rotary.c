@@ -144,18 +144,16 @@ static int lrotary_setup( lua_State* L )
   d->turnCallback = LUA_NOREF;
 
   int phaseA = luaL_checkinteger(L, 2);
+  luaL_argcheck(L, platform_gpio_exists(phaseA) && phaseA > 0, 1, "Invalid pin");
+  int phaseB = luaL_checkinteger(L, 3);
+  luaL_argcheck(L, platform_gpio_exists(phaseB) && phaseB > 0, 2, "Invalid pin");
   int phaseB = luaL_checkinteger(L, 3);
   int press;
   if (lua_gettop(L) >= 4) {
     press = luaL_checkinteger(L, 4);
+    luaL_argcheck(L, platform_gpio_exists(press) && press > 0, 3, "Invalid pin");
   } else {
     press = -1;
-  }
-
-  if (phaseA <= 0 || phaseA >= GPIO_PIN_NUM
-     || phaseB <= 0 || phaseB >= GPIO_PIN_NUM
-     || press == 0 || press < -1 || press >= GPIO_PIN_NUM) {
-    return luaL_error( L, "Pin number out of range." );
   }
 
   if (rotary_setup(id, phaseA, phaseB, press, tasknumber)) {
@@ -281,6 +279,12 @@ static void lrotary_task(os_param_t param, uint8_t prio)
 {
   (void) param;
   (void) prio;
+
+  uint8_t *taskQueuePtr = (uint8_t) param;
+  if (taskQueuePtr) {
+    // Signal that new events may need another task post
+    *taskQueuePtr = 0;
+  }
 
   lrotary_dequeue(lua_getstate());
 }

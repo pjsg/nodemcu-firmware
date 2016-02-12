@@ -246,8 +246,6 @@ static void ICACHE_RAM_ATTR timer_interrupt(void *p)
     if (d->currentStep == d->targetStep && d->vel == 0) {
       d->stopped = 1;
       d->dir = 0;
-      // TODO: We need to post a message to say that the motion is complete
-      // system_os_post(LUA_TASK, , i);
       task_post_low(d->taskNumber, 0);
       continue;
     }
