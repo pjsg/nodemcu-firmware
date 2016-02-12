@@ -1,6 +1,6 @@
 # rotary Module
 
-This modules can read the state of cheap rotary encoder switches. These are available at
+This module can read the state of cheap rotary encoder switches. These are available at
 all the standard places for a dollar or two. They are five pin devices where three are used
 for a gray code encoder for rotation, and two are used for the push switch. These switches
 are commonly used in car audio systems. 

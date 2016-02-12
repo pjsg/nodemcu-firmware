@@ -45,22 +45,22 @@
 static const uint8_t stateMap[N_STATES] = {0x9, 0x1, 0x7, 0x6, 0xE, 0x8};
 
 typedef struct {
-  uint8_t  currentState;
+  uint8_t  current_state;
   uint8_t  stopped;
   int8_t   dir;
   uint32_t mask;
   uint32_t pinstate[N_STATES];
-  uint32_t nextTime;
-  int16_t  targetStep;
-  int16_t  currentStep;
+  uint32_t next_time;
+  int16_t  target_step;
+  int16_t  current_step;
   uint16_t vel;
-  uint16_t maxVel;
-  uint16_t minDelay;
-  task_handle_t taskNumber;
+  uint16_t max_vel;
+  uint16_t min_delay;
+  task_handle_t task_number;
 } DATA;
 
 static DATA *data[SWITEC_CHANNEL_COUNT];
-static volatile char timerActive;
+static volatile char timer_active;
 
 #define MAXVEL 255
 
@@ -193,25 +193,25 @@ int switec_close(uint32_t channel)
   return 0;
 }
 
-static __attribute__((always_inline)) inline void writeIO(DATA *d) 
+static __attribute__((always_inline)) inline void write_io(DATA *d) 
 {
-  uint32_t pinState = d->pinstate[d->currentState];
+  uint32_t pin_state = d->pinstate[d->current_state];
 
-  gpio_output_set(pinState, d->mask & ~pinState, 0, 0);
+  gpio_output_set(pin_state, d->mask & ~pin_state, 0, 0);
 }
 
-static __attribute__((always_inline)) inline  void stepUp(DATA *d) 
+static __attribute__((always_inline)) inline  void step_up(DATA *d) 
 {
-  d->currentStep++;
-  d->currentState = (d->currentState + 1) % N_STATES;
-  writeIO(d);
+  d->current_step++;
+  d->current_state = (d->current_state + 1) % N_STATES;
+  write_io(d);
 }
 
-static __attribute__((always_inline)) inline  void stepDown(DATA *d) 
+static __attribute__((always_inline)) inline  void step_down(DATA *d) 
 {
-  d->currentStep--;
-  d->currentState = (d->currentState + N_STATES - 1) % N_STATES;
-  writeIO(d);
+  d->current_step--;
+  d->current_state = (d->current_state + N_STATES - 1) % N_STATES;
+  write_io(d);
 }
 
 static void ICACHE_RAM_ATTR timer_interrupt(void *p) 
@@ -232,10 +232,10 @@ static void ICACHE_RAM_ATTR timer_interrupt(void *p)
     }
 
     uint32_t now = system_get_time();
-    if (now < d->nextTime) {
-      int needToWait = d->nextTime - now;
-      if (needToWait < delay) {
-	delay = needToWait;
+    if (now < d->next_time) {
+      int need_to_wait = d->next_time - now;
+      if (need_to_wait < delay) {
+	delay = need_to_wait;
       }
       continue;
     }
@@ -243,37 +243,37 @@ static void ICACHE_RAM_ATTR timer_interrupt(void *p)
     // This channel is past it's action time. Need to process it
 
     // Are we done yet?
-    if (d->currentStep == d->targetStep && d->vel == 0) {
+    if (d->current_step == d->target_step && d->vel == 0) {
       d->stopped = 1;
       d->dir = 0;
-      task_post_low(d->taskNumber, 0);
+      task_post_low(d->task_number, 0);
       continue;
     }
 
     // if stopped, determine direction
     if (d->vel == 0) {
-      d->dir = d->currentStep < d->targetStep ? 1 : -1;
+      d->dir = d->current_step < d->target_step ? 1 : -1;
       // do not set to 0 or it could go negative in case 2 below
       d->vel = 1; 
     }
     
     // Move the pointer by one step in the correct direction
     if (d->dir > 0) {
-      stepUp(d);
+      step_up(d);
     } else {
-      stepDown(d);
+      step_down(d);
     }
 
     // determine delta, number of steps in current direction to target.
     // may be negative if we are headed away from target
-    int delta = d->dir > 0 ? d->targetStep - d->currentStep : d->currentStep - d->targetStep;
+    int delta = d->dir > 0 ? d->target_step - d->current_step : d->current_step - d->target_step;
     
     if (delta > 0) {
       // case 1 : moving towards target (maybe under accel or decel)
       if (delta <= d->vel) {
 	// time to declerate
 	d->vel--;
-      } else if (d->vel < d->maxVel) {
+      } else if (d->vel < d->max_vel) {
 	// accelerating
 	d->vel++;
       } else {
@@ -291,21 +291,21 @@ static void ICACHE_RAM_ATTR timer_interrupt(void *p)
       row++;
     }
 
-    uint32_t microDelay = switec_accel_table[row][1] << 4;
-    if (microDelay < d->minDelay) {
-      microDelay = d->minDelay;
+    uint32_t micro_delay = switec_accel_table[row][1] << 4;
+    if (micro_delay < d->min_delay) {
+      micro_delay = d->min_delay;
     }
 
     // Figure out when we next need to take action
-    d->nextTime = d->nextTime + microDelay;
-    if (d->nextTime < now) {
-      d->nextTime = now + microDelay;
+    d->next_time = d->next_time + micro_delay;
+    if (d->next_time < now) {
+      d->next_time = now + micro_delay;
     }
 
     // Figure out how long to wait
-    int needToWait = d->nextTime - now;
-    if (needToWait < delay) {
-      delay = needToWait;
+    int need_to_wait = d->next_time - now;
+    if (need_to_wait < delay) {
+      delay = need_to_wait;
     }
   } 
 
@@ -313,16 +313,16 @@ static void ICACHE_RAM_ATTR timer_interrupt(void *p)
     if (delay < 50) {
       delay = 50;
     }
-    timerActive = 1;
+    timer_active = 1;
     hw_timer_arm(delay);
   } else {
-    timerActive = 0;
+    timer_active = 0;
   }
 }
 
 
 // The pin numbers are actual platform GPIO numbers
-int switec_setup(uint32_t channel, int *pin, int maxDegPerSec, task_handle_t taskNumber )
+int switec_setup(uint32_t channel, int *pin, int max_deg_per_sec, task_handle_t task_number )
 {
   if (channel >= sizeof(data) / sizeof(data[0])) {
     return -1;
@@ -361,12 +361,12 @@ int switec_setup(uint32_t channel, int *pin, int maxDegPerSec, task_handle_t tas
     }
   }
 
-  d->maxVel = MAXVEL;
-  if (maxDegPerSec == 0) {
-    maxDegPerSec = 400;
+  d->max_vel = MAXVEL;
+  if (max_deg_per_sec == 0) {
+    max_deg_per_sec = 400;
   }
-  d->minDelay = 1000000 / (3 * maxDegPerSec);
-  d->taskNumber = taskNumber;
+  d->min_delay = 1000000 / (3 * max_deg_per_sec);
+  d->task_number = task_number;
 
 #ifdef SWITEC_DEBUG
   for (i = 0; i < 4; i++) {
@@ -400,7 +400,7 @@ int switec_reset(uint32_t channel)
     return -1;
   }
 
-  d->currentStep = d->targetStep = 0;
+  d->current_step = d->target_step = 0;
 
   return 0;
 }
@@ -420,20 +420,20 @@ int switec_moveto(uint32_t channel, int pos)
 
   if (pos < 0) {
     // This ensures that we don't slam into the endstop
-    d->maxVel = 50;
+    d->max_vel = 50;
   } else {
-    d->maxVel = MAXVEL;
+    d->max_vel = MAXVEL;
   }
 
-  d->targetStep = pos;
+  d->target_step = pos;
 
   // If the pointer is not moving, setup so that we start it
   if (d->stopped) {
     // reset the timer to avoid possible time overflow giving spurious deltas
-    d->nextTime = system_get_time() + 1000;
+    d->next_time = system_get_time() + 1000;
     d->stopped = false;
 
-    if (!timerActive) {
+    if (!timer_active) {
       timer_interrupt(0);
     }
   }
@@ -454,9 +454,9 @@ int switec_getpos(uint32_t channel, int32_t *pos, int32_t *dir, int32_t *target)
     return -1;
   }
 
-  *pos = d->currentStep;
+  *pos = d->current_step;
   *dir = d->stopped ? 0 : d->dir;
-  *target = d->targetStep;
+  *target = d->target_step;
 
   return 0;
 }

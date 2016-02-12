@@ -27,14 +27,14 @@
 
 #define QUEUE_SIZE 	8
 
-#define GET_LAST_STATUS(d)	(d->queue[(d->writeOffset-1) & (QUEUE_SIZE - 1)])
-#define GET_PREV_STATUS(d)	(d->queue[(d->writeOffset-2) & (QUEUE_SIZE - 1)])
-#define HAS_QUEUED_DATA(d)	(d->readOffset < d->writeOffset)
-#define REPLACE_STATUS(d, x)    (d->queue[(d->writeOffset-1) & (QUEUE_SIZE - 1)] = (x))
-#define HAS_QUEUE_SPACE(d)	(d->readOffset + QUEUE_SIZE - 1 > d->writeOffset)
-#define QUEUE_STATUS(d, x)      (d->queue[(d->writeOffset++) & (QUEUE_SIZE - 1)] = (x))
-#define GET_READ_STATUS(d)	(d->queue[d->readOffset & (QUEUE_SIZE - 1)])
-#define ADVANCE_IF_POSSIBLE(d)  if (d->readOffset < d->writeOffset) { d->readOffset++; }
+#define GET_LAST_STATUS(d)	(d->queue[(d->write_offset-1) & (QUEUE_SIZE - 1)])
+#define GET_PREV_STATUS(d)	(d->queue[(d->write_offset-2) & (QUEUE_SIZE - 1)])
+#define HAS_QUEUED_DATA(d)	(d->read_offset < d->write_offset)
+#define REPLACE_STATUS(d, x)    (d->queue[(d->write_offset-1) & (QUEUE_SIZE - 1)] = (x))
+#define HAS_QUEUE_SPACE(d)	(d->read_offset + QUEUE_SIZE - 1 > d->write_offset)
+#define QUEUE_STATUS(d, x)      (d->queue[(d->write_offset++) & (QUEUE_SIZE - 1)] = (x))
+#define GET_READ_STATUS(d)	(d->queue[d->read_offset & (QUEUE_SIZE - 1)])
+#define ADVANCE_IF_POSSIBLE(d)  if (d->read_offset < d->write_offset) { d->read_offset++; }
 
 #define STATUS_IS_PRESSED(x)	((x & 0x80000000) != 0)
 
@@ -43,14 +43,14 @@ uint32_t rotary_interrupt_count;
 #endif
 
 typedef struct {
-  int8_t   phaseA_pin;
-  int8_t   phaseB_pin;
+  int8_t   phase_a_pin;
+  int8_t   phase_b_pin;
   int8_t   press_pin;
-  uint32_t readOffset;  // Accessed by task
-  uint32_t writeOffset;	// Accessed by ISR
-  uint32_t pinMask;
-  uint32_t phaseA;
-  uint32_t phaseB;
+  uint32_t read_offset;  // Accessed by task
+  uint32_t write_offset;	// Accessed by ISR
+  uint32_t pin_mask;
+  uint32_t phase_a;
+  uint32_t phase_b;
   uint32_t press;
   uint32_t last_press_change_time;
   int	   tasknumber;
@@ -59,9 +59,9 @@ typedef struct {
 
 static DATA *data[ROTARY_CHANNEL_COUNT];
 
-static uint8_t taskQueued;
+static uint8_t task_queued;
 
-static void setGpioBits(void);
+static void set_gpio_bits(void);
 
 static void rotary_clear_pin(int pin) 
 {
@@ -86,13 +86,13 @@ int rotary_close(uint32_t channel)
 
   data[channel] = NULL;
 
-  rotary_clear_pin(d->phaseA_pin);
-  rotary_clear_pin(d->phaseB_pin);
+  rotary_clear_pin(d->phase_a_pin);
+  rotary_clear_pin(d->phase_b_pin);
   rotary_clear_pin(d->press_pin);
 
   c_free(d);
 
-  setGpioBits();
+  set_gpio_bits();
 
   return 0;
 }
@@ -115,26 +115,26 @@ static void ICACHE_RAM_ATTR rotary_interrupt(uint32_t bits)
   int i;
   for (i = 0; i < sizeof(data) / sizeof(data[0]); i++) {
     DATA *d = data[i];
-    if (!d || (gpio_status & d->pinMask) == 0) {
+    if (!d || (gpio_status & d->pin_mask) == 0) {
       continue;
     }
 
-    GPIO_REG_WRITE(GPIO_STATUS_W1TC_ADDRESS, gpio_status & d->pinMask);
+    GPIO_REG_WRITE(GPIO_STATUS_W1TC_ADDRESS, gpio_status & d->pin_mask);
 
     uint32_t bits = GPIO_REG_READ(GPIO_IN_ADDRESS);
 
-    uint32_t lastStatus = GET_LAST_STATUS(d);
+    uint32_t last_status = GET_LAST_STATUS(d);
 
     uint32_t now = system_get_time();
 
-    uint32_t newStatus;
+    uint32_t new_status;
 
-    newStatus = lastStatus & 0x80000000;
+    new_status = last_status & 0x80000000;
 
     // This is the debounce logic for the press switch. We ignore changes
     // for 10ms after a change.
     if (now - d->last_press_change_time > 10 * 1000) {
-      newStatus = (bits & d->press) ? 0 : 0x80000000;
+      new_status = (bits & d->press) ? 0 : 0x80000000;
       if (gpio_status & d->press) {
         d->last_press_change_time = now;
       }
@@ -147,16 +147,16 @@ static void ICACHE_RAM_ATTR rotary_interrupt(uint32_t bits)
     //  0   1   => 3
 
     int micropos = 2;
-    if (bits & d->phaseB) {
+    if (bits & d->phase_b) {
       micropos = 3;
     }
-    if (bits & d->phaseA) {
+    if (bits & d->phase_a) {
       micropos ^= 3;
     }
 
-    int32_t rotary_pos = lastStatus;
+    int32_t rotary_pos = last_status;
 
-    switch ((micropos - lastStatus) & 3) {
+    switch ((micropos - last_status) & 3) {
       case 0:
         // No change, nothing to do
 	break;
@@ -175,32 +175,32 @@ static void ICACHE_RAM_ATTR rotary_interrupt(uint32_t bits)
 	break;
     }
 
-    newStatus |= rotary_pos & 0x7fffffff;
+    new_status |= rotary_pos & 0x7fffffff;
     
-    if (lastStatus != newStatus) {
+    if (last_status != new_status) {
       // Either we overwrite the status or we add a new one
       if (!HAS_QUEUED_DATA(d) 
-	  || STATUS_IS_PRESSED(lastStatus ^ newStatus)
-	  || STATUS_IS_PRESSED(lastStatus ^ GET_PREV_STATUS(d))) {
+	  || STATUS_IS_PRESSED(last_status ^ new_status)
+	  || STATUS_IS_PRESSED(last_status ^ GET_PREV_STATUS(d))) {
 	if (HAS_QUEUE_SPACE(d)) {
-	  QUEUE_STATUS(d, newStatus);
-	  if (!taskQueued) {
-	    if (task_post_medium(d->tasknumber, (os_param_t) &taskQueued)) {
-	      taskQueued = 1;
+	  QUEUE_STATUS(d, new_status);
+	  if (!task_queued) {
+	    if (task_post_medium(d->tasknumber, (os_param_t) &task_queued)) {
+	      task_queued = 1;
 	    }
 	  }
 	} else {
-	  REPLACE_STATUS(d, newStatus);
+	  REPLACE_STATUS(d, new_status);
 	}
       } else {
-	REPLACE_STATUS(d, newStatus);
+	REPLACE_STATUS(d, new_status);
       }
     }
   }
 }
 
 // The pin numbers are actual platform GPIO numbers
-int rotary_setup(uint32_t channel, int phaseA, int phaseB, int press, task_handle_t tasknumber )
+int rotary_setup(uint32_t channel, int phase_a, int phase_b, int press, task_handle_t tasknumber )
 {
   if (channel >= sizeof(data) / sizeof(data[0])) {
     return -1;
@@ -222,15 +222,15 @@ int rotary_setup(uint32_t channel, int phaseA, int phaseB, int press, task_handl
 
   d->tasknumber = tasknumber;
 
-  d->phaseA = 1 << pin_num[phaseA];
-  platform_gpio_mode(phaseA, PLATFORM_GPIO_INT, PLATFORM_GPIO_PULLUP);
-  gpio_pin_intr_state_set(GPIO_ID_PIN(pin_num[phaseA]), GPIO_PIN_INTR_ANYEDGE);
-  d->phaseA_pin = phaseA;
+  d->phase_a = 1 << pin_num[phase_a];
+  platform_gpio_mode(phase_a, PLATFORM_GPIO_INT, PLATFORM_GPIO_PULLUP);
+  gpio_pin_intr_state_set(GPIO_ID_PIN(pin_num[phase_a]), GPIO_PIN_INTR_ANYEDGE);
+  d->phase_a_pin = phase_a;
 
-  d->phaseB = 1 << pin_num[phaseB];
-  platform_gpio_mode(phaseB, PLATFORM_GPIO_INT, PLATFORM_GPIO_PULLUP);
-  gpio_pin_intr_state_set(GPIO_ID_PIN(pin_num[phaseB]), GPIO_PIN_INTR_ANYEDGE);
-  d->phaseB_pin = phaseB;
+  d->phase_b = 1 << pin_num[phase_b];
+  platform_gpio_mode(phase_b, PLATFORM_GPIO_INT, PLATFORM_GPIO_PULLUP);
+  gpio_pin_intr_state_set(GPIO_ID_PIN(pin_num[phase_b]), GPIO_PIN_INTR_ANYEDGE);
+  d->phase_b_pin = phase_b;
 
   if (press >= 0) {
     d->press = 1 << pin_num[press];
@@ -239,21 +239,21 @@ int rotary_setup(uint32_t channel, int phaseA, int phaseB, int press, task_handl
   }
   d->press_pin = press;
 
-  d->pinMask = d->phaseA | d->phaseB | d->press;
+  d->pin_mask = d->phase_a | d->phase_b | d->press;
 
-  setGpioBits();
+  set_gpio_bits();
 
   return 0;
 }
 
-static void setGpioBits()
+static void set_gpio_bits()
 {
   uint32_t bits = 0;
   for (int i = 0; i < ROTARY_CHANNEL_COUNT; i++) {
     DATA *d = data[i];
 
     if (d) {
-      bits = bits | d->pinMask;
+      bits = bits | d->pin_mask;
     }
   }
 
@@ -279,7 +279,7 @@ int32_t rotary_getevent(uint32_t channel)
 
   if (HAS_QUEUED_DATA(d)) {
     result = GET_READ_STATUS(d);
-    d->readOffset++;
+    d->read_offset++;
   } else {
     result = GET_LAST_STATUS(d);
   }
@@ -301,7 +301,7 @@ int rotary_getpos(uint32_t channel)
     return -1;
   }
 
-  return d->queue[(d->writeOffset - 1) & (QUEUE_SIZE - 1)];
+  return d->queue[(d->write_offset - 1) & (QUEUE_SIZE - 1)];
 }
 
 #ifdef ROTARY_DEBUG
@@ -324,10 +324,10 @@ size_t rotary_getstate(uint32_t channel, int32_t *buffer, size_t maxlen)
     return 0;
   }
 
-  buffer[0] = d->queue[(d->readOffset - 1) & (QUEUE_SIZE - 1)];
+  buffer[0] = d->queue[(d->read_offset - 1) & (QUEUE_SIZE - 1)];
 
-  for (i = 0; i < maxlen  - 1 && ((d->readOffset + i - d->writeOffset) & (QUEUE_SIZE - 1)); i++) {
-    buffer[i + 1] = d->queue[(d->readOffset + i) & (QUEUE_SIZE - 1)];
+  for (i = 0; i < maxlen  - 1 && ((d->read_offset + i - d->write_offset) & (QUEUE_SIZE - 1)); i++) {
+    buffer[i + 1] = d->queue[(d->read_offset + i) & (QUEUE_SIZE - 1)];
   }
 
   return i + 1;

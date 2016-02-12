@@ -3,7 +3,7 @@
  * are much used in the automtive industry as the cntrols for 
  * CD players and the like.
  *
- * NodeMcu integration by Philip Gladstone, N1DQ
+ * Philip Gladstone, N1DQ
  */
 
 #include "module.h"
@@ -19,71 +19,71 @@
 #define ROTARY_ALL	7
 
 typedef struct {
-  int pressCallback;
-  int releaseCallback;
-  int turnCallback;
+  int press_callback;
+  int release_callback;
+  int turn_callback;
   int lastpos;
 } DATA;
 
 static DATA *data[ROTARY_CHANNEL_COUNT];
 static task_handle_t tasknumber;
 
-static void callbackFreeOne(lua_State *L, int *cbPtr) 
+static void callback_free_one(lua_State *L, int *cb_ptr) 
 {
-  if (*cbPtr != LUA_NOREF) {
-    luaL_unref(L, LUA_REGISTRYINDEX, *cbPtr);
-    *cbPtr = LUA_NOREF;
+  if (*cb_ptr != LUA_NOREF) {
+    luaL_unref(L, LUA_REGISTRYINDEX, *cb_ptr);
+    *cb_ptr = LUA_NOREF;
   }
 }
 
-static void callbackFree(lua_State* L, unsigned int id, int mask) 
+static void callback_free(lua_State* L, unsigned int id, int mask) 
 {
   DATA *d = data[id];
 
   if (d) {
     if (mask & ROTARY_PRESS) {
-      callbackFreeOne(L, &d->pressCallback);
+      callback_free_one(L, &d->press_callback);
     }
     if (mask & ROTARY_RELEASE) {
-      callbackFreeOne(L, &d->releaseCallback);
+      callback_free_one(L, &d->release_callback);
     }
     if (mask & ROTARY_TURN) {
-      callbackFreeOne(L, &d->turnCallback);
+      callback_free_one(L, &d->turn_callback);
     }
   }
 }
 
-static int callbackSetOne(lua_State* L, int *cbPtr, int argNumber) 
+static int callback_setOne(lua_State* L, int *cb_ptr, int arg_number) 
 {
-  if (lua_type(L, argNumber) == LUA_TFUNCTION || lua_type(L, argNumber) == LUA_TLIGHTFUNCTION) {
-    lua_pushvalue(L, argNumber);  // copy argument (func) to the top of stack
-    callbackFreeOne(L, cbPtr);
-    *cbPtr = luaL_ref(L, LUA_REGISTRYINDEX);
+  if (lua_type(L, arg_number) == LUA_TFUNCTION || lua_type(L, arg_number) == LUA_TLIGHTFUNCTION) {
+    lua_pushvalue(L, arg_number);  // copy argument (func) to the top of stack
+    callback_free_one(L, cb_ptr);
+    *cb_ptr = luaL_ref(L, LUA_REGISTRYINDEX);
     return 0;
   }
 
   return -1;
 }
 
-static int callbackSet(lua_State* L, int id, int mask, int argNumber) 
+static int callback_set(lua_State* L, int id, int mask, int arg_number) 
 {
   DATA *d = data[id];
   int result = 0;
 
   if (mask & ROTARY_TURN) {
-    result |= callbackSetOne(L, &d->turnCallback, argNumber);
+    result |= callback_setOne(L, &d->turn_callback, arg_number);
   }
   if (mask & ROTARY_PRESS) {
-    result |= callbackSetOne(L, &d->pressCallback, argNumber);
+    result |= callback_setOne(L, &d->press_callback, arg_number);
   }
   if (mask & ROTARY_RELEASE) {
-    result |= callbackSetOne(L, &d->releaseCallback, argNumber);
+    result |= callback_setOne(L, &d->release_callback, arg_number);
   }
 
   return result;
 }
 
-static void callbackCallOne(lua_State* L, int cb, int mask, int arg) 
+static void callback_callOne(lua_State* L, int cb, int mask, int arg) 
 {
   if (cb != LUA_NOREF) {
     lua_rawgeti(L, LUA_REGISTRYINDEX, cb);
@@ -95,18 +95,18 @@ static void callbackCallOne(lua_State* L, int cb, int mask, int arg)
   }
 }
 
-static void callbackCall(lua_State* L, unsigned int id, int mask, int arg) 
+static void callback_call(lua_State* L, unsigned int id, int mask, int arg) 
 {
   DATA *d = data[id];
   if (d) {
     if (mask & ROTARY_TURN) {
-      callbackCallOne(L, d->turnCallback, ROTARY_TURN, arg);
+      callback_callOne(L, d->turn_callback, ROTARY_TURN, arg);
     }
     if (mask & ROTARY_PRESS) {
-      callbackCallOne(L, d->pressCallback, ROTARY_PRESS, arg);
+      callback_callOne(L, d->press_callback, ROTARY_PRESS, arg);
     }
     if (mask & ROTARY_RELEASE) {
-      callbackCallOne(L, d->releaseCallback, ROTARY_RELEASE, arg);
+      callback_callOne(L, d->release_callback, ROTARY_RELEASE, arg);
     }
   }
 }
@@ -116,7 +116,7 @@ int platform_rotary_exists( unsigned int id )
   return (id < ROTARY_CHANNEL_COUNT);
 }
 
-// Lua: setup(id, phaseA, phaseB [, press])
+// Lua: setup(id, phase_a, phase_b [, press])
 static int lrotary_setup( lua_State* L )
 {
   unsigned int id;
@@ -125,9 +125,9 @@ static int lrotary_setup( lua_State* L )
   MOD_CHECK_ID( rotary, id );
 
   if (rotary_close(id)) {
-    return luaL_error( L, "Unable to setup switch." );
+    return luaL_error( L, "Unable to close switch." );
   }
-  callbackFree(L, id, ROTARY_ALL);
+  callback_free(L, id, ROTARY_ALL);
 
   if (!data[id]) {
     data[id] = (DATA *) c_zalloc(sizeof(DATA));
@@ -139,14 +139,14 @@ static int lrotary_setup( lua_State* L )
   DATA *d = data[id];
   memset(d, 0, sizeof(*d));
   
-  d->pressCallback = LUA_NOREF;
-  d->releaseCallback = LUA_NOREF;
-  d->turnCallback = LUA_NOREF;
+  d->press_callback = LUA_NOREF;
+  d->release_callback = LUA_NOREF;
+  d->turn_callback = LUA_NOREF;
 
-  int phaseA = luaL_checkinteger(L, 2);
-  luaL_argcheck(L, platform_gpio_exists(phaseA) && phaseA > 0, 1, "Invalid pin");
-  int phaseB = luaL_checkinteger(L, 3);
-  luaL_argcheck(L, platform_gpio_exists(phaseB) && phaseB > 0, 2, "Invalid pin");
+  int phase_a = luaL_checkinteger(L, 2);
+  luaL_argcheck(L, platform_gpio_exists(phase_a) && phase_a > 0, 1, "Invalid pin");
+  int phase_b = luaL_checkinteger(L, 3);
+  luaL_argcheck(L, platform_gpio_exists(phase_b) && phase_b > 0, 2, "Invalid pin");
   int press;
   if (lua_gettop(L) >= 4) {
     press = luaL_checkinteger(L, 4);
@@ -155,7 +155,7 @@ static int lrotary_setup( lua_State* L )
     press = -1;
   }
 
-  if (rotary_setup(id, phaseA, phaseB, press, tasknumber)) {
+  if (rotary_setup(id, phase_a, phase_b, press, tasknumber)) {
     return luaL_error(L, "Unable to setup rotary switch.");
   }
   return 0;  
@@ -168,7 +168,7 @@ static int lrotary_close( lua_State* L )
   
   id = luaL_checkinteger( L, 1 );
   MOD_CHECK_ID( rotary, id );
-  callbackFree(L, id, ROTARY_ALL);
+  callback_free(L, id, ROTARY_ALL);
 
   DATA *d = data[id];
   if (d) {
@@ -192,11 +192,11 @@ static int lrotary_on( lua_State* L )
   int mask = luaL_checkinteger(L, 2);
 
   if (lua_gettop(L) >= 3) {
-    if (callbackSet(L, id, mask, 3)) {
+    if (callback_set(L, id, mask, 3)) {
       return luaL_error( L, "Unable to set callback." );
     }
   } else {
-    callbackFree(L, id, mask);
+    callback_free(L, id, mask);
   }
 
   return 0;  
@@ -261,11 +261,11 @@ static int lrotary_dequeue(lua_State* L)
 	// We have something to enqueue
 	if ((pos ^ d->lastpos) & 0x7fffffff) {
 	  // Some turning has happened
-	  callbackCall(L, id, ROTARY_TURN, (pos << 1) >> 1);
+	  callback_call(L, id, ROTARY_TURN, (pos << 1) >> 1);
 	}
 	if ((pos ^ d->lastpos) & 0x80000000) {
 	  // pressing or releasing has happened
-	  callbackCall(L, id, (pos & 0x80000000) ? ROTARY_PRESS : ROTARY_RELEASE, (pos << 1) >> 1);
+	  callback_call(L, id, (pos & 0x80000000) ? ROTARY_PRESS : ROTARY_RELEASE, (pos << 1) >> 1);
 	}
 
 	d->lastpos = pos;
@@ -279,10 +279,10 @@ static void lrotary_task(os_param_t param, uint8_t prio)
   (void) param;
   (void) prio;
 
-  uint8_t *taskQueuePtr = (uint8_t*) param;
-  if (taskQueuePtr) {
+  uint8_t *task_queue_ptr = (uint8_t*) param;
+  if (task_queue_ptr) {
     // Signal that new events may need another task post
-    *taskQueuePtr = 0;
+    *task_queue_ptr = 0;
   }
 
   lrotary_dequeue(lua_getstate());

@@ -22,32 +22,32 @@
 
 // This is the reference to the callbacks for when the pointer
 // stops moving.
-static int stoppedCallback[SWITEC_CHANNEL_COUNT] = { LUA_NOREF, LUA_NOREF, LUA_NOREF };
+static int stopped_callback[SWITEC_CHANNEL_COUNT] = { LUA_NOREF, LUA_NOREF, LUA_NOREF };
 static task_handle_t tasknumber;
 
-static void callbackFree(lua_State* L, unsigned int id) 
+static void callback_free(lua_State* L, unsigned int id) 
 {
-  if (stoppedCallback[id] != LUA_NOREF) {
-    luaL_unref(L, LUA_REGISTRYINDEX, stoppedCallback[id]);
-    stoppedCallback[id] = LUA_NOREF;
+  if (stopped_callback[id] != LUA_NOREF) {
+    luaL_unref(L, LUA_REGISTRYINDEX, stopped_callback[id]);
+    stopped_callback[id] = LUA_NOREF;
   }
 }
 
-static void callbackSet(lua_State* L, unsigned int id, int argNumber) 
+static void callback_set(lua_State* L, unsigned int id, int argNumber) 
 {
   if (lua_type(L, argNumber) == LUA_TFUNCTION || lua_type(L, argNumber) == LUA_TLIGHTFUNCTION) {
     lua_pushvalue(L, argNumber);  // copy argument (func) to the top of stack
-    callbackFree(L, id);
-    stoppedCallback[id] = luaL_ref(L, LUA_REGISTRYINDEX);
+    callback_free(L, id);
+    stopped_callback[id] = luaL_ref(L, LUA_REGISTRYINDEX);
   }
 }
 
-static void callbackExecute(lua_State* L, unsigned int id) 
+static void callback_execute(lua_State* L, unsigned int id) 
 {
-  if (stoppedCallback[id] != LUA_NOREF) {
-    int callback = stoppedCallback[id];
+  if (stopped_callback[id] != LUA_NOREF) {
+    int callback = stopped_callback[id];
     lua_rawgeti(L, LUA_REGISTRYINDEX, callback);
-    callbackFree(L, id);
+    callback_free(L, id);
 
     lua_call(L, 0, 0);
   }
@@ -82,12 +82,12 @@ static int lswitec_setup( lua_State* L )
     platform_gpio_mode(gpio, PLATFORM_GPIO_OUTPUT, PLATFORM_GPIO_PULLUP);
   }
 
-  int degPerSec = 0;
+  int deg_per_sec = 0;
   if (lua_gettop(L) >= 6) {
-    degPerSec = luaL_checkinteger(L, 6);
+    deg_per_sec = luaL_checkinteger(L, 6);
   }
 
-  if (switec_setup(id, pin, degPerSec, tasknumber)) {
+  if (switec_setup(id, pin, deg_per_sec, tasknumber)) {
     return luaL_error(L, "Unable to setup stepper.");
   }
   return 0;  
@@ -100,7 +100,7 @@ static int lswitec_close( lua_State* L )
   
   id = luaL_checkinteger( L, 1 );
   MOD_CHECK_ID( switec, id );
-  callbackFree(L, id);
+  callback_free(L, id);
   if (switec_close( id )) {
     return luaL_error( L, "Unable to close stepper." );
   }
@@ -130,9 +130,9 @@ static int lswitec_moveto( lua_State* L )
   pos = luaL_checkinteger( L, 2 );
 
   if (lua_gettop(L) >= 3) {
-    callbackSet(L, id, 3);
+    callback_set(L, id, 3);
   } else {
-    callbackFree(L, id);
+    callback_free(L, id);
   }
 
   if (switec_moveto( id, pos )) {
@@ -164,13 +164,13 @@ static int lswitec_dequeue(lua_State* L)
   int id;
 
   for (id = 0; id < SWITEC_CHANNEL_COUNT; id++) {
-    if (stoppedCallback[id] != LUA_NOREF) {
+    if (stopped_callback[id] != LUA_NOREF) {
       int32_t pos;
       int32_t dir;
       int32_t target;
       if (!switec_getpos( id, &pos, &dir, &target )) {
 	if (dir == 0 && pos == target) {
-	  callbackExecute(L, id);
+	  callback_execute(L, id);
 	}
       }
     }
