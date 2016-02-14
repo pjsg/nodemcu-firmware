@@ -21,6 +21,7 @@
 #include "ets_sys.h"
 #include "os_type.h"
 #include "osapi.h"
+#include "hw_timer.h"
 #include "user_interface.h"
 #include "task/task.h"
 
@@ -74,85 +75,9 @@ uint8_t switec_accel_table[][2] = {
     {  MAXVEL,  600 >> 4}
 };
 
-static void ICACHE_RAM_ATTR timer_interrupt(void *);
+static void ICACHE_RAM_ATTR timer_interrupt(os_param_t);
 
-//-----
-// The following code is heavily copied from the Espressif sample hw_timer.c
-//-----
-
-/******************************************************************************
-* Copyright 2013-2014 Espressif Systems (Wuxi)
-*
-* FileName: hw_timer.c
-*
-* Description: hw_timer driver
-*
-* Modification history:
-*     2014/5/1, v1.0 create this file.
-*******************************************************************************/
-
-#define US_TO_RTC_TIMER_TICKS(t)          \
-    ((t) ?                                   \
-     (((t) > 0x35A) ?                   \
-      (((t)>>2) * ((APB_CLK_FREQ>>4)/250000) + ((t)&0x3) * ((APB_CLK_FREQ>>4)/1000000))  :    \
-      (((t) *(APB_CLK_FREQ>>4)) / 1000000)) :    \
-     0)
-
-#define FRC1_ENABLE_TIMER  BIT7
-#define FRC1_AUTO_LOAD  BIT6
-
-//TIMER PREDIVED MODE
-typedef enum {
-    DIVDED_BY_1 = 0,		//timer clock
-    DIVDED_BY_16 = 4,	//divided by 16
-    DIVDED_BY_256 = 8,	//divided by 256
-} TIMER_PREDIVED_MODE;
-
-typedef enum {			//timer interrupt mode
-    TM_LEVEL_INT = 1,	// level interrupt
-    TM_EDGE_INT   = 0,	//edge interrupt
-} TIMER_INT_MODE;
-
-/******************************************************************************
-* FunctionName : hw_timer_arm
-* Description  : set a trigger timer delay for this timer.
-* Parameters   : uint32 val :
-in autoload mode
-                        50 ~ 0x7fffff;  for FRC1 source.
-                        100 ~ 0x7fffff;  for NMI source.
-in non autoload mode:
-                        10 ~ 0x7fffff;
-* Returns      : NONE
-*******************************************************************************/
-static __attribute__((always_inline)) inline void hw_timer_arm(u32 val)
-{
-    RTC_REG_WRITE(FRC1_LOAD_ADDRESS, US_TO_RTC_TIMER_TICKS(val));
-}
-
-/******************************************************************************
-* FunctionName : hw_timer_init
-* Description  : initilize the hardware isr timer
-* Parameters   :
-u8 req:
-                        0,  not autoload,
-                        1,  autoload mode,
-* Returns      : NONE
-*******************************************************************************/
-static void hw_timer_init(u8 req)
-{
-    if (req == 1) {
-        RTC_REG_WRITE(FRC1_CTRL_ADDRESS,
-                      FRC1_AUTO_LOAD | DIVDED_BY_16 | FRC1_ENABLE_TIMER | TM_EDGE_INT);
-    } else {
-        RTC_REG_WRITE(FRC1_CTRL_ADDRESS,
-                      DIVDED_BY_16 | FRC1_ENABLE_TIMER | TM_EDGE_INT);
-    }
-
-    ETS_FRC_TIMER1_INTR_ATTACH(timer_interrupt, NULL);
-
-    TM1_EDGE_INT_ENABLE();
-    ETS_FRC1_INTR_ENABLE();
-}
+#define TIMER_OWNER ((os_param_t) 'S')
 
 
 // Just takes the channel number
@@ -187,7 +112,7 @@ int switec_close(uint32_t channel)
 
   // If not, then disable the interrupt
   if (channel >= sizeof(data) / sizeof(data[0])) {
-    ETS_FRC1_INTR_DISABLE();
+    platform_hw_timer_close(TIMER_OWNER);
   }
 
   return 0;
@@ -214,7 +139,7 @@ static __attribute__((always_inline)) inline  void step_down(DATA *d)
   write_io(d);
 }
 
-static void ICACHE_RAM_ATTR timer_interrupt(void *p) 
+static void ICACHE_RAM_ATTR timer_interrupt(os_param_t p) 
 {
   // This function really is running at interrupt level with everything
   // else masked off. It should take as little time as necessary.
@@ -314,7 +239,7 @@ static void ICACHE_RAM_ATTR timer_interrupt(void *p)
       delay = 50;
     }
     timer_active = 1;
-    hw_timer_arm(delay);
+    platform_hw_timer_arm_us(TIMER_OWNER, delay);
   } else {
     timer_active = 0;
   }
@@ -342,7 +267,11 @@ int switec_setup(uint32_t channel, int *pin, int max_deg_per_sec, task_handle_t 
   if (!data[0] && !data[1] && !data[2]) {
     // We need to stup the timer as no channel was active before
     // no autoreload
-    hw_timer_init(0);
+    if (!platform_hw_timer_init(TIMER_OWNER, FRC1_SOURCE, FALSE)) {
+      // Failed to get the timer
+      c_free(d);
+      return -1;
+    }
   }
 
   data[channel] = d;
@@ -382,7 +311,7 @@ int switec_setup(uint32_t channel, int *pin, int max_deg_per_sec, task_handle_t 
   // Set all pins as outputs
   gpio_output_set(0, 0, d->mask, 0);
 
-  ETS_FRC1_INTR_ENABLE();
+  platform_hw_timer_set_func(TIMER_OWNER, timer_interrupt, 0);
 
   return 0;
 }
