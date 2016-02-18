@@ -12,10 +12,10 @@ also be grounded and the other pin connected to the nodemcu.
 
 ## Sources for parts
 
-- Amazon: This (search)[http://www.amazon.com/s/ref=nb_sb_noss_1?url=search-alias%3Dindustrial&field-keywords=rotary+encoder+push+button&rh=n%3A16310091%2Ck%3Arotary+encoder+push+button] shows a variety.
-- Ebay: Somewhat cheaper in this (search)[http://www.ebay.com/sch/i.html?_from=R40&_trksid=p2050601.m570.l1313.TR0.TRC0.H0.Xrotary+encoder+push+button.TRS0&_nkw=rotary+encoder+push+button&_sacat=0]
-- Adafruit: (rotary encoder)[https://www.adafruit.com/products/377]
-- Aliexpress: This (search)[http://www.aliexpress.com/wholesale?catId=0&initiative_id=SB_20160217173657&SearchText=rotary+encoder+push+button] reveals all sorts of shapes and sizes.
+- Amazon: This [search](http://www.amazon.com/s/ref=nb_sb_noss_1?url=search-alias%3Dindustrial&field-keywords=rotary+encoder+push+button&rh=n%3A16310091%2Ck%3Arotary+encoder+push+button) shows a variety.
+- Ebay: Somewhat cheaper in this [search](http://www.ebay.com/sch/i.html?_from=R40&_trksid=p2050601.m570.l1313.TR0.TRC0.H0.Xrotary+encoder+push+button.TRS0&_nkw=rotary+encoder+push+button&_sacat=0)
+- Adafruit: [rotary encoder](https://www.adafruit.com/products/377)
+- Aliexpress: This [search](http://www.aliexpress.com/wholesale?catId=0&initiative_id=SB_20160217173657&SearchText=rotary+encoder+push+button) reveals all sorts of shapes and sizes.
 
 ## Constants
 - `rotary.PRESS = 1` The eventtype for the switch press.
