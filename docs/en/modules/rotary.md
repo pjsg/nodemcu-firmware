@@ -21,7 +21,10 @@ also be grounded and the other pin connected to the nodemcu.
 - `rotary.PRESS = 1` The eventtype for the switch press.
 - `rotary.RELEASE = 2` The eventtype for the switch release.
 - `rotary.TURN = 4` The eventtype for the switch rotation.
-- `rotary.ALL = 7` All event types.
+- `rotary.LONGPRESS = 8` The eventtype for a long press.
+- `rotary.CLICK = 16` The eventtype for a single click (after release)
+- `rotary.DBLCLICK = 32` The eventtype for a double click (after second release)
+- `rotary.ALL = 63` All event types.
 
 ## rotary.setup()
 Initialize the nodemcu to talk to a rotary encoder switch.
@@ -57,14 +60,17 @@ Sets a callback on specific events.
 
 If the callback is None or omitted, then the registration is cancelled.
 
-The callback will be invoked with two arguments when the event happens. The first argument is the 
-current position of the rotary switch, and the second is the eventtype. The position is tracked
-and is represented as a signed 32-bit integer. Increasing values indicate clockwise motion.
+The callback will be invoked with three arguments when the event happens. The first argument is the 
+current position of the rotary switch, the second is the eventtype, and the third is the time when the event happened. 
+
+The position is tracked
+and is represented as a signed 32-bit integer. Increasing values indicate clockwise motion. The time is the number of microseconds represented
+in a 32-bit integer. Note that this wraps every hour or so.
 
 #### Example
 
-    rotary.on(0, rotary.ALL, function (pos, type) 
-      print "Position=" .. pos .. " event type=" .. type
+    rotary.on(0, rotary.ALL, function (pos, type, when) 
+      print "Position=" .. pos .. " event type=" .. type .. " time=" .. when
     end)
 
 #### Notes
@@ -77,6 +83,9 @@ Some switches have 4 steps per detent. This means that, in practice, the applica
 should divide the position by 4 and use that to determine the number of clicks. It is
 unlikely that a switch will ever reach 30 bits of rotation in either direction -- some
 are rated for under 50,000 revolutions.
+
+The `CLICK` and `LONGPRESS` events are delivered on a timeout. The `DBLCLICK` event is delivered after a `PRESS`, `RELEASE`, `PRESS`, `RELEASE` sequence
+where this is a short time gap between the middle `RELEASE` and `PRESS`.
 
 #### Errors
 If an invalid `eventtype` is supplied, then an error will be thrown.
