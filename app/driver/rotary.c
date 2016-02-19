@@ -30,9 +30,11 @@
 #define GET_LAST_STATUS(d)	(d->queue[(d->write_offset-1) & (QUEUE_SIZE - 1)])
 #define GET_PREV_STATUS(d)	(d->queue[(d->write_offset-2) & (QUEUE_SIZE - 1)])
 #define HAS_QUEUED_DATA(d)	(d->read_offset < d->write_offset)
-#define REPLACE_STATUS(d, x)    (d->queue[(d->write_offset-1) & (QUEUE_SIZE - 1)] = (x))
 #define HAS_QUEUE_SPACE(d)	(d->read_offset + QUEUE_SIZE - 1 > d->write_offset)
-#define QUEUE_STATUS(d, x)      (d->queue[(d->write_offset++) & (QUEUE_SIZE - 1)] = (x))
+
+#define REPLACE_STATUS(d, x)    (d->queue[(d->write_offset-1) & (QUEUE_SIZE - 1)] = (rotary_event_t) { (x), system_get_time() })
+#define QUEUE_STATUS(d, x)      (d->queue[(d->write_offset++) & (QUEUE_SIZE - 1)] = (rotary_event_t) { (x), system_get_time() })
+
 #define GET_READ_STATUS(d)	(d->queue[d->read_offset & (QUEUE_SIZE - 1)])
 #define ADVANCE_IF_POSSIBLE(d)  if (d->read_offset < d->write_offset) { d->read_offset++; }
 
@@ -54,7 +56,7 @@ typedef struct {
   uint32_t press;
   uint32_t last_press_change_time;
   int	   tasknumber;
-  uint32_t queue[QUEUE_SIZE];
+  rotary_event_t    queue[QUEUE_SIZE];
 } DATA;
 
 static DATA *data[ROTARY_CHANNEL_COUNT];
@@ -123,7 +125,7 @@ static void ICACHE_RAM_ATTR rotary_interrupt(uint32_t bits)
 
     uint32_t bits = GPIO_REG_READ(GPIO_IN_ADDRESS);
 
-    uint32_t last_status = GET_LAST_STATUS(d);
+    uint32_t last_status = GET_LAST_STATUS(d).pos;
 
     uint32_t now = system_get_time();
 
@@ -181,7 +183,7 @@ static void ICACHE_RAM_ATTR rotary_interrupt(uint32_t bits)
       // Either we overwrite the status or we add a new one
       if (!HAS_QUEUED_DATA(d) 
 	  || STATUS_IS_PRESSED(last_status ^ new_status)
-	  || STATUS_IS_PRESSED(last_status ^ GET_PREV_STATUS(d))) {
+	  || STATUS_IS_PRESSED(last_status ^ GET_PREV_STATUS(d).pos)) {
 	if (HAS_QUEUE_SPACE(d)) {
 	  QUEUE_STATUS(d, new_status);
 	  if (!task_queued) {
@@ -261,32 +263,37 @@ static void set_gpio_bits()
 }
 
 // Get the oldest event in the queue and remove it (if possible)
-int32_t rotary_getevent(uint32_t channel) 
+bool rotary_getevent(uint32_t channel, rotary_event_t *resultp) 
 {
+  rotary_event_t result = { 0 };
+  
   if (channel >= sizeof(data) / sizeof(data[0])) {
-    return 0;
+    return FALSE;
   }
 
   DATA *d = data[channel];
 
   if (!d) {
-    return 0;
+    return FALSE;
   }
 
-  int32_t result;
-  
   ETS_GPIO_INTR_DISABLE();
+
+  bool status = FALSE;
 
   if (HAS_QUEUED_DATA(d)) {
     result = GET_READ_STATUS(d);
     d->read_offset++;
+    status = TRUE;
   } else {
     result = GET_LAST_STATUS(d);
   }
 
   ETS_GPIO_INTR_ENABLE();
 
-  return result;
+  *resultp = result;
+
+  return status;
 }
 
 int rotary_getpos(uint32_t channel)
@@ -301,7 +308,7 @@ int rotary_getpos(uint32_t channel)
     return -1;
   }
 
-  return d->queue[(d->write_offset - 1) & (QUEUE_SIZE - 1)];
+  return d->queue[(d->write_offset - 1) & (QUEUE_SIZE - 1)].pos;
 }
 
 #ifdef ROTARY_DEBUG

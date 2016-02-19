@@ -10,23 +10,42 @@
 #include "lauxlib.h"
 #include "platform.h"
 #include "c_types.h"
+#include "user_interface.h"
 #include "driver/rotary.h"
 #include "../libc/c_stdlib.h"
 
-#define ROTARY_PRESS	1
-#define ROTARY_RELEASE	2
-#define ROTARY_TURN	4
-#define ROTARY_ALL	7
+#define MASK(x)		(1 << ROTARY_ ## x ## _INDEX)
+
+#define ROTARY_PRESS_INDEX	0
+#define ROTARY_RELEASE_INDEX	1
+#define ROTARY_TURN_INDEX	2
+#define ROTARY_LONGPRESS_INDEX	3
+#define ROTARY_CLICK_INDEX	4
+#define ROTARY_DBLCLICK_INDEX	5
+
+#define ROTARY_ALL		0x3f
+
+#define LONGPRESS_DELAY_US 	500000
+#define CLICK_DELAY_US 		500000
+
+#define CALLBACK_COUNT	6
 
 typedef struct {
-  int press_callback;
-  int release_callback;
-  int turn_callback;
   int lastpos;
+  int last_recent_event_was_press : 1;
+  int last_recent_event_was_release : 1;
+  int timer_running : 1;
+  int possible_dbl_click : 1;
+  unsigned int id : 3;
+  uint32_t last_event_time;
+  int callback[CALLBACK_COUNT];
+  ETSTimer timer;
 } DATA;
 
 static DATA *data[ROTARY_CHANNEL_COUNT];
 static task_handle_t tasknumber;
+static void lrotary_timer_done(void *param);
+static void lrotary_check_timer(DATA *d, uint32_t time_us, bool dotimer);
 
 static void callback_free_one(lua_State *L, int *cb_ptr) 
 {
@@ -41,14 +60,11 @@ static void callback_free(lua_State* L, unsigned int id, int mask)
   DATA *d = data[id];
 
   if (d) {
-    if (mask & ROTARY_PRESS) {
-      callback_free_one(L, &d->press_callback);
-    }
-    if (mask & ROTARY_RELEASE) {
-      callback_free_one(L, &d->release_callback);
-    }
-    if (mask & ROTARY_TURN) {
-      callback_free_one(L, &d->turn_callback);
+    int i;
+    for (i = 0; i < CALLBACK_COUNT; i++) {
+      if (mask & (1 << i)) {
+	callback_free_one(L, &d->callback[i]);
+      }
     }
   }
 }
@@ -70,43 +86,37 @@ static int callback_set(lua_State* L, int id, int mask, int arg_number)
   DATA *d = data[id];
   int result = 0;
 
-  if (mask & ROTARY_TURN) {
-    result |= callback_setOne(L, &d->turn_callback, arg_number);
-  }
-  if (mask & ROTARY_PRESS) {
-    result |= callback_setOne(L, &d->press_callback, arg_number);
-  }
-  if (mask & ROTARY_RELEASE) {
-    result |= callback_setOne(L, &d->release_callback, arg_number);
+  int i;
+  for (i = 0; i < CALLBACK_COUNT; i++) {
+    if (mask & (1 << i)) {
+      result |= callback_setOne(L, &d->callback[i], arg_number);
+    }
   }
 
   return result;
 }
 
-static void callback_callOne(lua_State* L, int cb, int mask, int arg) 
+static void callback_callOne(lua_State* L, int cb, int mask, int arg, uint32_t time) 
 {
   if (cb != LUA_NOREF) {
     lua_rawgeti(L, LUA_REGISTRYINDEX, cb);
 
     lua_pushinteger(L, mask);
     lua_pushinteger(L, arg);
+    lua_pushinteger(L, time);
 
-    lua_call(L, 2, 0);
+    lua_call(L, 3, 0);
   }
 }
 
-static void callback_call(lua_State* L, unsigned int id, int mask, int arg) 
+static void callback_call(lua_State* L, DATA *d, int mask, int arg, uint32_t time) 
 {
-  DATA *d = data[id];
   if (d) {
-    if (mask & ROTARY_TURN) {
-      callback_callOne(L, d->turn_callback, ROTARY_TURN, arg);
-    }
-    if (mask & ROTARY_PRESS) {
-      callback_callOne(L, d->press_callback, ROTARY_PRESS, arg);
-    }
-    if (mask & ROTARY_RELEASE) {
-      callback_callOne(L, d->release_callback, ROTARY_RELEASE, arg);
+    int i;
+    for (i = 0; i < CALLBACK_COUNT; i++) {
+      if (mask & (1 << i)) {
+	callback_callOne(L, d->callback[i], 1 << i, arg, time);
+      }
     }
   }
 }
@@ -138,10 +148,13 @@ static int lrotary_setup( lua_State* L )
 
   DATA *d = data[id];
   memset(d, 0, sizeof(*d));
+
+  os_timer_setfn(&d->timer, lrotary_timer_done, (void *) d);
   
-  d->press_callback = LUA_NOREF;
-  d->release_callback = LUA_NOREF;
-  d->turn_callback = LUA_NOREF;
+  int i;
+  for (i = 0; i < CALLBACK_COUNT; i++) {
+    d->callback[i] = LUA_NOREF;
+  }
 
   int phase_a = luaL_checkinteger(L, 2);
   luaL_argcheck(L, platform_gpio_exists(phase_a) && phase_a > 0, 1, "Invalid pin");
@@ -216,7 +229,7 @@ static int lrotary_getpos( lua_State* L )
   }
 
   lua_pushnumber(L, (pos << 1) >> 1);
-  lua_pushnumber(L, (pos & 0x80000000) ? ROTARY_PRESS : ROTARY_RELEASE);
+  lua_pushnumber(L, (pos & 0x80000000) ? MASK(PRESS) : MASK(RELEASE));
 
   return 2;  
 }
@@ -236,7 +249,7 @@ static int lrotary_getqueue( lua_State* L )
 
   for (j = 0; j < i; j++) {
     lua_pushnumber(L, (buffer[j] << 1) >> 1);
-    lua_pushnumber(L, (buffer[j] & 0x80000000) ? ROTARY_PRESS : ROTARY_RELEASE);
+    lua_pushnumber(L, (buffer[j] & 0x80000000) ? MASK(PRESS) : MASK(RELEASE));
   }
 
   extern uint32_t rotary_interrupt_count;
@@ -246,31 +259,100 @@ static int lrotary_getqueue( lua_State* L )
 }
 #endif
 
-static int lrotary_dequeue(lua_State* L)
+static void lrotary_dequeue_single(lua_State* L, DATA *d)
 {
-  int id;
+  if (d) {
+    // This chnnel is open
+    rotary_event_t result;
 
-  for (id = 0; id < ROTARY_CHANNEL_COUNT; id++) {
-    DATA *d = data[id];
+    while (rotary_getevent(d->id, &result)) {
+      int pos = result.pos;
 
-    if (d) {
-      // This chnnel is open
-      int pos = rotary_getevent(id);
+      lrotary_check_timer(d, result.time_us, 0);
 
       if (pos != d->lastpos) {
 	// We have something to enqueue
 	if ((pos ^ d->lastpos) & 0x7fffffff) {
 	  // Some turning has happened
-	  callback_call(L, id, ROTARY_TURN, (pos << 1) >> 1);
+	  callback_call(L, d, MASK(TURN), (pos << 1) >> 1, result.time_us);
 	}
 	if ((pos ^ d->lastpos) & 0x80000000) {
 	  // pressing or releasing has happened
-	  callback_call(L, id, (pos & 0x80000000) ? ROTARY_PRESS : ROTARY_RELEASE, (pos << 1) >> 1);
+	  callback_call(L, d, (pos & 0x80000000) ? MASK(PRESS) : MASK(RELEASE), (pos << 1) >> 1, result.time_us);
+	  if (pos & 0x80000000) {
+	    // Press
+	    if (d->last_recent_event_was_release && result.time_us - d->last_event_time < CLICK_DELAY_US) {
+	      d->possible_dbl_click = 1;
+	    }
+	    d->last_recent_event_was_press = 1;
+	    d->last_recent_event_was_release = 0;
+	  } else {
+	    // Release
+	    if (d->possible_dbl_click) {
+	      callback_call(L, d, MASK(DBLCLICK), (pos << 1) >> 1, result.time_us);
+	      d->possible_dbl_click = 0;
+	    }
+	    d->last_recent_event_was_press = 0;
+	    d->last_recent_event_was_release = 1;
+	  }
+	  d->last_event_time = result.time_us;
 	}
 
 	d->lastpos = pos;
       }
     }
+
+    lrotary_check_timer(d, system_get_time(), 1);
+  }
+}
+
+static int lrotary_dequeue(lua_State* L)
+{
+  int id;
+
+  for (id = 0; id < ROTARY_CHANNEL_COUNT; id++) {
+    lrotary_dequeue_single(L, data[id]);
+  }
+
+  return 0;
+}
+
+static void lrotary_timer_done(void *param)
+{
+  DATA *d = (DATA *) param;
+
+  lrotary_dequeue_single(lua_getstate(), d);
+}
+
+static void lrotary_check_timer(DATA *d, uint32_t time_us, bool dotimer)
+{
+  uint32_t delay = time_us - d->last_event_time;
+  if (d->timer_running) {
+    os_timer_disarm(&d->timer);
+    d->timer_running = 0;
+  }
+
+  int timeout = -1;
+
+  if (d->last_recent_event_was_press) {
+    if (delay > LONGPRESS_DELAY_US) {
+      callback_call(lua_getstate(), d, MASK(LONGPRESS), (d->lastpos << 1) >> 1, d->last_event_time + LONGPRESS_DELAY_US);
+      d->last_recent_event_was_press = 0;
+    } else {
+      timeout = (delay - LONGPRESS_DELAY_US) / 1000;
+    }
+  }
+  if (d->last_recent_event_was_release) {
+    if (delay > CLICK_DELAY_US) {
+      callback_call(lua_getstate(), d, MASK(CLICK), (d->lastpos << 1) >> 1, d->last_event_time + CLICK_DELAY_US);
+      d->last_recent_event_was_release = 0;
+    } else {
+      timeout = (delay - CLICK_DELAY_US) / 1000;
+    }
+  }
+
+  if (dotimer && timeout >= 0) {
+    os_timer_arm(&d->timer, timeout + 1, 0);
   }
 }
 
@@ -304,9 +386,12 @@ static const LUA_REG_TYPE rotary_map[] = {
   { LSTRKEY( "getqueue" ), LFUNCVAL( lrotary_getqueue) },
   { LSTRKEY( "dequeue" ),  LFUNCVAL( lrotary_dequeue) },
 #endif
-  { LSTRKEY( "TURN" ),     LNUMVAL( ROTARY_TURN    ) },
-  { LSTRKEY( "PRESS" ),    LNUMVAL( ROTARY_PRESS   ) },
-  { LSTRKEY( "RELEASE" ),  LNUMVAL( ROTARY_RELEASE ) },
+  { LSTRKEY( "TURN" ),     LNUMVAL( MASK(TURN)    ) },
+  { LSTRKEY( "PRESS" ),    LNUMVAL( MASK(PRESS)   ) },
+  { LSTRKEY( "RELEASE" ),  LNUMVAL( MASK(RELEASE) ) },
+  { LSTRKEY( "LONGPRESS" ),LNUMVAL( MASK(LONGPRESS) ) },
+  { LSTRKEY( "CLICK" ),    LNUMVAL( MASK(CLICK)   ) },
+  { LSTRKEY( "DBLCLICK" ), LNUMVAL( MASK(DBLCLICK)) },
   { LSTRKEY( "ALL" ),      LNUMVAL( ROTARY_ALL     ) },
 
   { LNILKEY, LNILVAL }
