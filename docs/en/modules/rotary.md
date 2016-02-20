@@ -19,9 +19,9 @@ also be grounded and the other pin connected to the nodemcu.
 
 ## Constants
 - `rotary.PRESS = 1` The eventtype for the switch press.
-- `rotary.RELEASE = 2` The eventtype for the switch release.
-- `rotary.TURN = 4` The eventtype for the switch rotation.
-- `rotary.LONGPRESS = 8` The eventtype for a long press.
+- `rotary.LONGPRESS = 2` The eventtype for a long press.
+- `rotary.RELEASE = 4` The eventtype for the switch release.
+- `rotary.TURN = 8` The eventtype for the switch rotation.
 - `rotary.CLICK = 16` The eventtype for a single click (after release)
 - `rotary.DBLCLICK = 32` The eventtype for a double click (after second release)
 - `rotary.ALL = 63` All event types.
@@ -30,13 +30,15 @@ also be grounded and the other pin connected to the nodemcu.
 Initialize the nodemcu to talk to a rotary encoder switch.
 
 #### Syntax
-`rotary.setup(channel, pina, pinb[, pinpress])`
+`rotary.setup(channel, pina, pinb[, pinpress[, longpress_time_ms[, dblclick_time_ms]]])`
 
 #### Parameters
 - `channel` The rotary module supports three switches. The channel is either 0, 1 or 2.
 - `pina` This is a GPIO number (excluding 0) and connects to pin phase A on the rotary switch.
 - `pinb` This is a GPIO number (excluding 0) and connects to pin phase B on the rotary switch.
 - `pinpress` (optional) This is a GPIO number (excluding 0) and connects to the press switch.
+- `longpress_time_ms` (optional) The number of milliseconds (default 500) of press to be considered a long press.
+- `dblclick_time_ms` (optional) The number of milliseconds (default 500) between a release and a press for the next release to be considered a double click.
 
 #### Returns
 Nothing. If the arguments are in error, or the operation cannot be completed, then an error is thrown.

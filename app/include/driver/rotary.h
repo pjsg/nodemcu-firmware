@@ -19,6 +19,8 @@ int rotary_setup(uint32_t channel, int phaseA, int phaseB, int press, task_handl
 
 bool rotary_getevent(uint32_t channel, rotary_event_t *result);
 
+bool rotary_has_queued_event(uint32_t channel);
+
 #ifdef ROTARY_DEBUG
 size_t rotary_getstate(uint32_t channel, int32_t *buffer, size_t maxlen);
 #endif

@@ -137,7 +137,7 @@ static void ICACHE_RAM_ATTR rotary_interrupt(uint32_t bits)
     // for 10ms after a change.
     if (now - d->last_press_change_time > 10 * 1000) {
       new_status = (bits & d->press) ? 0 : 0x80000000;
-      if (gpio_status & d->press) {
+      if (STATUS_IS_PRESSED(new_status ^ last_status)) {
         d->last_press_change_time = now;
       }
     }
@@ -262,6 +262,21 @@ static void set_gpio_bits()
   platform_gpio_register_callback(bits, rotary_interrupt);
 }
 
+bool rotary_has_queued_event(uint32_t channel)
+{
+  if (channel >= sizeof(data) / sizeof(data[0])) {
+    return FALSE;
+  }
+
+  DATA *d = data[channel];
+
+  if (!d) {
+    return FALSE;
+  }
+
+  return HAS_QUEUED_DATA(d);
+}
+
 // Get the oldest event in the queue and remove it (if possible)
 bool rotary_getevent(uint32_t channel, rotary_event_t *resultp) 
 {
@@ -308,7 +323,7 @@ int rotary_getpos(uint32_t channel)
     return -1;
   }
 
-  return d->queue[(d->write_offset - 1) & (QUEUE_SIZE - 1)].pos;
+  return GET_LAST_STATUS(d).pos;
 }
 
 #ifdef ROTARY_DEBUG
