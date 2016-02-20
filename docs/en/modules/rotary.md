@@ -17,6 +17,10 @@ also be grounded and the other pin connected to the nodemcu.
 - Adafruit: [rotary encoder](https://www.adafruit.com/products/377)
 - Aliexpress: This [search](http://www.aliexpress.com/wholesale?catId=0&initiative_id=SB_20160217173657&SearchText=rotary+encoder+push+button) reveals all sorts of shapes and sizes.
 
+There is also a switch mounted on a board with standard 0.1" pins. 
+This is the KY-040, and can also be found at [lots of places](https://www.google.com/webhp?sourceid=chrome-instant&ion=1&espv=2&ie=UTF-8#q=ky-040%20rotary%20encoder). 
+Note that the pins are named somewhat eccentrically, and I suspect that it really does need the VCC connected.
+
 ## Constants
 - `rotary.PRESS = 1` The eventtype for the switch press.
 - `rotary.LONGPRESS = 2` The eventtype for a long press.
