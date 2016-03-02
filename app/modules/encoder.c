@@ -4,6 +4,7 @@
 #include "lauxlib.h"
 #include "lmem.h"
 #include "c_string.h"
+#include "encoder.h"
 #define BASE64_INVALID '\xff'
 #define BASE64_PADDING '='
 #define ISBASE64(c) (unbytes64[c] != BASE64_INVALID)
@@ -74,6 +75,10 @@ static uint8 *fromBase64 ( lua_State* L, const uint8 *enc_msg, size_t *len){
   }
   *len = q - msg;
   return msg;
+}
+
+uint8* encoder_fromBase64Util( lua_State *L, uint8 *enc_msg, size_t *len) {
+  return fromBase64(L, enc_msg, len);
 }
 
 static inline uint8 to_hex_nibble(uint8 b) {

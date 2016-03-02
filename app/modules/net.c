@@ -3,6 +3,7 @@
 #include "module.h"
 #include "lauxlib.h"
 #include "platform.h"
+#include "lmem.h"
 
 #include "c_string.h"
 #include "c_stdlib.h"
@@ -13,17 +14,14 @@
 #include "espconn.h"
 #include "lwip/dns.h" 
 
-#ifdef CLIENT_SSL_ENABLE
-unsigned char *default_certificate;
-unsigned int default_certificate_len = 0;
-unsigned char *default_private_key;
-unsigned int default_private_key_len = 0;
-#endif
+#include "encoder.h"
 
 #define TCP ESPCONN_TCP
 #define UDP ESPCONN_UDP
 
 static ip_addr_t host_ip; // for dns
+
+extern char _server_cert_area;
 
 #if 0
 static int expose_array(lua_State* L, char *array, unsigned short len);
@@ -1432,6 +1430,111 @@ static int net_multicastLeave( lua_State* L )
 	return net_multicastJoinLeave(L,0);
 }
 
+// Lua: net.cert.verify(true / false | PEM data )
+static int net_cert_verify(lua_State *L)
+{
+  int enable;
+
+  uint32_t flash_offset = platform_flash_mapped2phys((uint32_t) &_server_cert_area);
+  if ((flash_offset & 0xfff) || flash_offset > 0xff000 || INTERNAL_FLASH_SECTOR_SIZE != 0x1000) {
+    // THis should never happen
+    return luaL_error( L, "bad offset" );
+  }
+
+  if (lua_type(L, 1) == LUA_TSTRING) {
+    const char *pem = lua_tostring(L, 1);
+    
+    uint8_t  *buffer = luaM_malloc(L, INTERNAL_FLASH_SECTOR_SIZE);
+    uint8_t  *buffer_base = buffer;
+    uint8_t  *buffer_limit = buffer + INTERNAL_FLASH_SECTOR_SIZE;
+
+    // now copy the PEM certs into the buffer as DER
+    int certid;
+    for (certid = 1; ; certid++) {
+      // Scan for -----BEGIN CERT
+      pem = strstr(pem, "-----BEGIN CERTIFICATE-----");
+      if (!pem) {
+	break;
+      }
+      pem = strchr(pem, '\n');
+      if (!pem) {
+	break;
+      }
+      pem = pem + 1;
+      // Base64 encoded data starts here
+      // Get all the base64 data into a single buffer....
+      // We will use the back end of the buffer....
+
+      uint8_t *dest = buffer;
+      for (; *pem && dest < buffer_limit; pem++) {
+	if (!isspace(*pem & 0xff)) {
+	  if (*pem == '-') {
+	    // got to the trailer
+	    break;
+	  }
+	  *dest++ = *pem;
+	}
+      }
+      if (dest >= buffer_limit - 1 || strcmp(pem, "-----END CERTIFICATE-----")) {
+	return luaL_error(L, "Invalid PEM format data");
+      }
+      pem = pem + 5 + 3 + 1 + 11 + 15;
+      *dest = '\0';    // Null terminate
+      size_t len;
+      uint8_t *decoded = encoder_fromBase64Util(L, buffer, &len);
+      if (!decoded) {
+	return luaL_error(L, "Invalid PEM data");
+      }
+      // Now build the data structure that Espressif wants
+      if (buffer + 32 + 2 + len >= buffer_limit) {
+	return luaL_error(L, "Certificate too large");
+      }
+      memset(buffer, 0, 32);
+      strcpy(buffer, "cert_");
+      buffer[5] = '@' + certid;
+      buffer[32] = len & 0xff;
+      buffer[33] = (len >> 8) & 0xff;
+      memcpy(buffer+34, decoded, len);
+      buffer = buffer + 34 + len;
+      luaM_free(L, decoded);
+    }
+
+    if (certid == 1) {
+      return luaL_error( L, "no certificates found" );
+    }
+
+    memset(buffer, 0xff, buffer_limit - buffer);
+
+    // Starts being dangerous
+    if (platform_flash_erase_sector(flash_offset / INTERNAL_FLASH_SECTOR_SIZE) != PLATFORM_OK) {
+      luaL_error(L, "failed to erase sector");
+    }
+    if (platform_s_flash_write(buffer_base, flash_offset, INTERNAL_FLASH_SECTOR_SIZE) != PLATFORM_OK) {
+      luaL_error(L, "failed to write sector");
+    }
+
+    luaM_free(L, buffer_base);
+
+    enable = 1;
+  } else {
+    enable = lua_toboolean(L, 1);
+  }
+
+  bool rc;
+
+  if (enable) {
+    // See if there is a cert there
+    if (_server_cert_area == 0x00 || _server_cert_area == 0xff) {
+      return luaL_error( L, "no certificates found" );
+    }
+    rc = espconn_secure_ca_enable(1, flash_offset / INTERNAL_FLASH_SECTOR_SIZE);
+  } else {
+    rc = espconn_secure_ca_disable(1);
+  }
+
+  lua_pushboolean(L, rc);
+  return 1;
+}
 
 // Lua: s = net.dns.setdnsserver(ip_addr, [index])
 static int net_setdnsserver( lua_State* L )
@@ -1539,6 +1642,12 @@ static const LUA_REG_TYPE net_array_map[] = {
 };
 #endif
 
+static const LUA_REG_TYPE net_cert_map[] = {
+  { LSTRKEY( "verify" ), 	LFUNCVAL( net_cert_verify ) },  
+  //{ LSTRKEY( "auth" ),		LFUNCVAL( net_cert_auth ) }, 
+  { LNILKEY, LNILVAL }
+};
+
 static const LUA_REG_TYPE net_dns_map[] = {
   { LSTRKEY( "setdnsserver" ), LFUNCVAL( net_setdnsserver ) },  
   { LSTRKEY( "getdnsserver" ), LFUNCVAL( net_getdnsserver ) }, 
@@ -1552,6 +1661,9 @@ static const LUA_REG_TYPE net_map[] = {
   { LSTRKEY( "multicastJoin"),     LFUNCVAL( net_multicastJoin ) },
   { LSTRKEY( "multicastLeave"),    LFUNCVAL( net_multicastLeave ) },
   { LSTRKEY( "dns" ),              LROVAL( net_dns_map ) },
+#ifdef CLIENT_SSL_ENABLE
+  { LSTRKEY( "cert" ),             LROVAL(net_cert_map) },
+#endif
   { LSTRKEY( "TCP" ),              LNUMVAL( TCP ) },
   { LSTRKEY( "UDP" ),              LNUMVAL( UDP ) },
   { LSTRKEY( "__metatable" ),      LROVAL( net_map ) },
