@@ -19,7 +19,8 @@
 
 static ip_addr_t host_ip; // for dns
 
-extern char _server_cert_area;
+static __attribute__((section(".clientcert.flash"))) char client_cert_area[INTERNAL_FLASH_SECTOR_SIZE];
+static __attribute__((section(".servercert.flash"))) char server_cert_area[INTERNAL_FLASH_SECTOR_SIZE];
 
 #if 0
 static int expose_array(lua_State* L, char *array, unsigned short len);
@@ -1428,110 +1429,142 @@ static int net_multicastLeave( lua_State* L )
 	return net_multicastJoinLeave(L,0);
 }
 
-// Lua: net.cert.verify(true / false | PEM data )
-static int net_cert_verify(lua_State *L)
+// Returns NULL on success, error message otherwise
+static const char *append_pem_blob(const char *pem, const char *type, uint8_t **buffer_p, uint8_t *buffer_limit) {
+  char unb64[256];
+  memset(unb64, 0xff, sizeof(unb64));
+  int i;
+  for (i = 0; i < 64; i++) {
+    unb64["ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"[i]] = i;
+  }
+
+  if (!pem) {
+    return "No PEM blob";
+  }
+
+  // Scan for -----BEGIN CERT
+  pem = strstr(pem, "-----BEGIN ");
+  if (!pem) {
+    return "No PEM header";
+  }
+
+  if (strncmp(pem + 11, type, strlen(type))) {
+    return "Wrong PEM type";
+  }
+
+  pem = strchr(pem, '\n');
+  if (!pem) {
+    "Incorrect PEM format";
+  }
+  //
+  // Base64 encoded data starts here
+  // Get all the base64 data into a single buffer....
+  // We will use the back end of the buffer....
+  //
+
+  uint8_t *buffer = *buffer_p;
+
+  uint8_t *dest = buffer + 32 + 2;  // Leave space for name and length
+  int bitcount = 0;
+  int accumulator = 0;
+  for (; *pem && dest < buffer_limit; pem++) {
+    int val = unb64[*(uint8_t*) pem];
+    if (val & 0xC0) {
+      // not a base64 character
+      if (isspace(*(uint8_t*) pem)) {
+	continue;
+      }
+      if (*pem == '=') {
+	// just ignore -- at the end
+	bitcount = 0;
+	continue;
+      }
+      if (*pem == '-') {
+	break;
+      }
+      return "Invalid character in PEM";
+    } else {
+      bitcount += 6;
+      accumulator = (accumulator << 6) + val;
+      if (bitcount >= 8) {
+	bitcount -= 8;
+	*dest++ = accumulator >> bitcount;
+      }
+    }
+  }
+  if (dest >= buffer_limit || strncmp(pem, "-----END ", 9) || strncmp(pem + 9, type, strlen(type)) || bitcount) {
+    return "Invalid PEM format data";
+  }
+  size_t len = dest - (buffer + 32 + 2);
+
+  memset(buffer, 0, 32);
+  for (i = 0; i < 20 && type[i]; i++) {
+    buffer[i] = tolower(type[i]);
+  }
+  buffer[32] = len & 0xff;
+  buffer[33] = (len >> 8) & 0xff;
+  *buffer_p = dest;
+  return NULL;
+}
+
+static const char *fill_page_with_pem(lua_State *L, int flash_offset, const char **types) 
+{
+  uint8_t  *buffer = luaM_malloc(L, INTERNAL_FLASH_SECTOR_SIZE);
+  uint8_t  *buffer_base = buffer;
+  uint8_t  *buffer_limit = buffer + INTERNAL_FLASH_SECTOR_SIZE;
+
+  int argno;
+
+  for (argno = 1; argno <= lua_gettop(L) && types[argno]; argno++) {
+    const char *pem = lua_tostring(L, argno);
+
+    const char *error = append_pem_blob(pem, types[argno], &buffer, buffer_limit);
+    if (error) {
+      luaM_free(L, buffer_base);
+      return error;
+    }
+  }
+
+  if (argno <= lua_gettop(L)) {
+    luaM_free(L, buffer_base);
+    return "Extra arguments ignored";
+  }
+
+  memset(buffer, 0xff, buffer_limit - buffer);
+
+  // Starts being dangerous
+  if (platform_flash_erase_sector(flash_offset / INTERNAL_FLASH_SECTOR_SIZE) != PLATFORM_OK) {
+    luaM_free(L, buffer_base);
+    return "Failed to erase sector";
+  }
+  if (platform_s_flash_write(buffer_base, flash_offset, INTERNAL_FLASH_SECTOR_SIZE) != INTERNAL_FLASH_SECTOR_SIZE) {
+    luaM_free(L, buffer_base);
+    return "Failed to write sector";
+  }
+  // ends being dangerous
+
+  luaM_free(L, buffer_base);
+
+  return NULL;
+}
+
+// Lua: net.cert.auth(true / false | PEM data [, PEM data] )
+static int net_cert_auth(lua_State *L)
 {
   int enable;
 
-  uint32_t flash_offset = platform_flash_mapped2phys((uint32_t) &_server_cert_area);
+  uint32_t flash_offset = platform_flash_mapped2phys((uint32_t) &client_cert_area[0]);
   if ((flash_offset & 0xfff) || flash_offset > 0xff000 || INTERNAL_FLASH_SECTOR_SIZE != 0x1000) {
     // THis should never happen
     return luaL_error( L, "bad offset" );
   }
 
   if (lua_type(L, 1) == LUA_TSTRING) {
-    const char *pem = lua_tostring(L, 1);
-    
-    uint8_t  *buffer = luaM_malloc(L, INTERNAL_FLASH_SECTOR_SIZE);
-    uint8_t  *buffer_base = buffer;
-    uint8_t  *buffer_limit = buffer + INTERNAL_FLASH_SECTOR_SIZE;
-
-    char unb64[256];
-    memset(unb64, 0xff, sizeof(unb64));
-    int i;
-    for (i = 0; i < 64; i++) {
-      unb64["ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"[i]] = i;
+    const char *types[3] = { "PRIVATE KEY", "CERTIFICATE", NULL };
+    const char *error = fill_page_with_pem(L, flash_offset, types);
+    if (error) {
+      return luaL_error(L, error);
     }
-
-    // now copy the PEM certs into the buffer as DER
-    int certid;
-    for (certid = 1; ; certid++) {
-      // Scan for -----BEGIN CERT
-      pem = strstr(pem, "-----BEGIN CERTIFICATE-----");
-      if (!pem) {
-	break;
-      }
-      pem = strchr(pem, '\n');
-      if (!pem) {
-	break;
-      }
-      //
-      // Base64 encoded data starts here
-      // Get all the base64 data into a single buffer....
-      // We will use the back end of the buffer....
-
-      uint8_t *dest = buffer + 32 + 2;  // Leave space for name and length
-      int bitcount = 0;
-      int accumulator = 0;
-      for (; *pem && dest < buffer_limit; pem++) {
-	int val = unb64[*(uint8_t*) pem];
-	if (val & 0xC0) {
-	  // not a base64 character
-	  if (isspace(*(uint8_t*) pem)) {
-	    continue;
-	  }
-	  if (*pem == '=') {
-	    // just ignore -- at the end
-	    bitcount = 0;
-	    continue;
-	  }
-	  if (*pem == '-') {
-	    break;
-	  }
-	  luaM_free(L, buffer_base);
-	  return luaL_error(L, "Invalid character in PEM");
-	} else {
-	  bitcount += 6;
-	  accumulator = (accumulator << 6) + val;
-	  if (bitcount >= 8) {
-	    bitcount -= 8;
-	    *dest++ = accumulator >> bitcount;
-	  }
-	}
-      }
-      if (dest >= buffer_limit || strncmp(pem, "-----END CERTIFICATE-----", 25) || bitcount) {
-	luaM_free(L, buffer_base);
-	return luaL_error(L, "Invalid PEM format data");
-      }
-      pem = pem + 25;
-      size_t len = dest - (buffer + 32 + 2);
-
-      memset(buffer, 0, 32);
-      strcpy(buffer, "cert_");
-      buffer[5] = '@' + certid;
-      buffer[32] = len & 0xff;
-      buffer[33] = (len >> 8) & 0xff;
-      buffer = dest;
-    }
-
-    if (certid == 1) {
-      luaM_free(L, buffer_base);
-      return luaL_error( L, "no certificates found" );
-    }
-
-    memset(buffer, 0xff, buffer_limit - buffer);
-
-    // Starts being dangerous
-    if (platform_flash_erase_sector(flash_offset / INTERNAL_FLASH_SECTOR_SIZE) != PLATFORM_OK) {
-      luaM_free(L, buffer_base);
-      luaL_error(L, "failed to erase sector");
-    }
-    if (platform_s_flash_write(buffer_base, flash_offset, INTERNAL_FLASH_SECTOR_SIZE) != INTERNAL_FLASH_SECTOR_SIZE) {
-      luaM_free(L, buffer_base);
-      luaL_error(L, "failed to write sector");
-    }
-
-    luaM_free(L, buffer_base);
 
     enable = 1;
   } else {
@@ -1542,7 +1575,47 @@ static int net_cert_verify(lua_State *L)
 
   if (enable) {
     // See if there is a cert there
-    if (_server_cert_area == 0x00 || _server_cert_area == 0xff) {
+    if (client_cert_area[0] == 0x00 || client_cert_area[0] == 0xff) {
+      return luaL_error( L, "no certificates found" );
+    }
+    rc = espconn_secure_cert_req_enable(1, flash_offset / INTERNAL_FLASH_SECTOR_SIZE);
+  } else {
+    rc = espconn_secure_cert_req_disable(1);
+  }
+
+  lua_pushboolean(L, rc);
+  return 1;
+}
+
+// Lua: net.cert.verify(true / false | PEM data [, PEM data] )
+static int net_cert_verify(lua_State *L)
+{
+  int enable;
+
+  uint32_t flash_offset = platform_flash_mapped2phys((uint32_t) &server_cert_area[0]);
+  if ((flash_offset & 0xfff) || flash_offset > 0xff000 || INTERNAL_FLASH_SECTOR_SIZE != 0x1000) {
+    // THis should never happen
+    return luaL_error( L, "bad offset" );
+  }
+
+  if (lua_type(L, 1) == LUA_TSTRING) {
+    const char *types[2] = { "CERTIFICATE", NULL };
+
+    const char *error = fill_page_with_pem(L, flash_offset, types);
+    if (error) {
+      return luaL_error(L, error);
+    }
+
+    enable = 1;
+  } else {
+    enable = lua_toboolean(L, 1);
+  }
+
+  bool rc;
+
+  if (enable) {
+    // See if there is a cert there
+    if (server_cert_area[0] == 0x00 || server_cert_area[0] == 0xff) {
       return luaL_error( L, "no certificates found" );
     }
     rc = espconn_secure_ca_enable(1, flash_offset / INTERNAL_FLASH_SECTOR_SIZE);
@@ -1662,7 +1735,7 @@ static const LUA_REG_TYPE net_array_map[] = {
 
 static const LUA_REG_TYPE net_cert_map[] = {
   { LSTRKEY( "verify" ), 	LFUNCVAL( net_cert_verify ) },  
-  //{ LSTRKEY( "auth" ),		LFUNCVAL( net_cert_auth ) }, 
+  { LSTRKEY( "auth" ),		LFUNCVAL( net_cert_auth ) }, 
   { LNILKEY, LNILVAL }
 };
 

@@ -135,13 +135,37 @@ uart_tx_one_char(uint8 uart, uint8 TxChar)
 }
 
 /******************************************************************************
+ * FunctionName : uart0_write_char
+ * Description  : Internal used function
+ *                Do some special deal while tx char is '\r' or '\n'
+ * Parameters   : char c - character to tx
+ * Returns      : NONE
+*******************************************************************************/
+void ICACHE_FLASH_ATTR
+uart0_write_char(char c)
+{
+  if (c == '\n')
+  {
+    uart_tx_one_char(UART0, '\r');
+    uart_tx_one_char(UART0, '\n');
+  }
+  else if (c == '\r')
+  {
+  }
+  else
+  {
+    uart_tx_one_char(UART0, c);
+  }
+}
+
+/******************************************************************************
  * FunctionName : uart1_write_char
  * Description  : Internal used function
  *                Do some special deal while tx char is '\r' or '\n'
  * Parameters   : char c - character to tx
  * Returns      : NONE
 *******************************************************************************/
-LOCAL void ICACHE_FLASH_ATTR
+void ICACHE_FLASH_ATTR
 uart1_write_char(char c)
 {
   if (c == '\n')

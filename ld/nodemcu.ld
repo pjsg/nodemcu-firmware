@@ -74,10 +74,8 @@ SECTIONS
   .irom0.text : ALIGN(0x1000)
   {
     _irom0_text_start = ABSOLUTE(.);
-    _server_cert_area = ABSOLUTE(.);
-    _server_cert_area_relative = .;
     *(.servercert.flash)
-    . = _server_cert_area_relative + 0x1000;
+    *(.clientcert.flash)
     *(.irom0.literal .irom.literal .irom.text.literal .irom0.text .irom.text)
     *(.literal.* .text.*)
     *(.rodata*)
