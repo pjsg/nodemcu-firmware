@@ -14,8 +14,6 @@
 #include "espconn.h"
 #include "lwip/dns.h" 
 
-#include "encoder.h"
-
 #define TCP ESPCONN_TCP
 #define UDP ESPCONN_UDP
 
@@ -1448,6 +1446,13 @@ static int net_cert_verify(lua_State *L)
     uint8_t  *buffer_base = buffer;
     uint8_t  *buffer_limit = buffer + INTERNAL_FLASH_SECTOR_SIZE;
 
+    char unb64[256];
+    memset(unb64, 0xff, sizeof(unb64));
+    int i;
+    for (i = 0; i < 64; i++) {
+      unb64["ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"[i]] = i;
+    }
+
     // now copy the PEM certs into the buffer as DER
     int certid;
     for (certid = 1; ; certid++) {
@@ -1460,46 +1465,57 @@ static int net_cert_verify(lua_State *L)
       if (!pem) {
 	break;
       }
-      pem = pem + 1;
+      //
       // Base64 encoded data starts here
       // Get all the base64 data into a single buffer....
       // We will use the back end of the buffer....
 
-      uint8_t *dest = buffer;
+      uint8_t *dest = buffer + 32 + 2;  // Leave space for name and length
+      int bitcount = 0;
+      int accumulator = 0;
       for (; *pem && dest < buffer_limit; pem++) {
-	if (!isspace(*pem & 0xff)) {
+	int val = unb64[*(uint8_t*) pem];
+	if (val & 0xC0) {
+	  // not a base64 character
+	  if (isspace(*(uint8_t*) pem)) {
+	    continue;
+	  }
+	  if (*pem == '=') {
+	    // just ignore -- at the end
+	    bitcount = 0;
+	    continue;
+	  }
 	  if (*pem == '-') {
-	    // got to the trailer
 	    break;
 	  }
-	  *dest++ = *pem;
+	  luaM_free(L, buffer_base);
+	  return luaL_error(L, "Invalid character in PEM");
+	} else {
+	  bitcount += 6;
+	  accumulator = (accumulator << 6) + val;
+	  if (bitcount >= 8) {
+	    bitcount -= 8;
+	    *dest++ = accumulator >> bitcount;
+	  }
 	}
       }
-      if (dest >= buffer_limit - 1 || strcmp(pem, "-----END CERTIFICATE-----")) {
+      if (dest >= buffer_limit || strncmp(pem, "-----END CERTIFICATE-----", 25) || bitcount) {
+	luaM_free(L, buffer_base);
 	return luaL_error(L, "Invalid PEM format data");
       }
-      pem = pem + 5 + 3 + 1 + 11 + 15;
-      *dest = '\0';    // Null terminate
-      size_t len;
-      uint8_t *decoded = encoder_fromBase64Util(L, buffer, &len);
-      if (!decoded) {
-	return luaL_error(L, "Invalid PEM data");
-      }
-      // Now build the data structure that Espressif wants
-      if (buffer + 32 + 2 + len >= buffer_limit) {
-	return luaL_error(L, "Certificate too large");
-      }
+      pem = pem + 25;
+      size_t len = dest - (buffer + 32 + 2);
+
       memset(buffer, 0, 32);
       strcpy(buffer, "cert_");
       buffer[5] = '@' + certid;
       buffer[32] = len & 0xff;
       buffer[33] = (len >> 8) & 0xff;
-      memcpy(buffer+34, decoded, len);
-      buffer = buffer + 34 + len;
-      luaM_free(L, decoded);
+      buffer = dest;
     }
 
     if (certid == 1) {
+      luaM_free(L, buffer_base);
       return luaL_error( L, "no certificates found" );
     }
 
@@ -1507,9 +1523,11 @@ static int net_cert_verify(lua_State *L)
 
     // Starts being dangerous
     if (platform_flash_erase_sector(flash_offset / INTERNAL_FLASH_SECTOR_SIZE) != PLATFORM_OK) {
+      luaM_free(L, buffer_base);
       luaL_error(L, "failed to erase sector");
     }
-    if (platform_s_flash_write(buffer_base, flash_offset, INTERNAL_FLASH_SECTOR_SIZE) != PLATFORM_OK) {
+    if (platform_s_flash_write(buffer_base, flash_offset, INTERNAL_FLASH_SECTOR_SIZE) != INTERNAL_FLASH_SECTOR_SIZE) {
+      luaM_free(L, buffer_base);
       luaL_error(L, "failed to write sector");
     }
 
