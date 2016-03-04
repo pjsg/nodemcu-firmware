@@ -175,7 +175,7 @@ $(BINODIR)/%.bin: $(IMAGEODIR)/%.out
 # Should be done in top-level makefile only
 #
 
-all:	sdk_extracted .subdirs $(OBJS) $(OLIBS) $(OIMAGES) $(OBINS) $(SPECIAL_MKTARGETS)
+all:	sdk_extracted pre_build .subdirs $(OBJS) $(OLIBS) $(OIMAGES) $(OBINS) $(SPECIAL_MKTARGETS)
 
 .PHONY: sdk_extracted
 
@@ -221,6 +221,17 @@ sinclude $(DEPS)
 endif
 endif
 endif
+
+.PHONY: pre_build
+
+pre_build:
+ifneq ($(wildcard $(TOP_DIR)/server-ca.crt),)
+	python $(TOP_DIR)/tools/make_server_cert.py $(TOP_DIR)/server-ca.crt > $(TOP_DIR)/app/modules/server-ca.crt.h
+DEFINES := $(DEFINES) -DHAVE_SSL_SERVER_CRT=\"server-ca.crt.h\"
+else
+	@-rm -f $(TOP_DIR)/app/modules/server-ca.crt.h
+endif
+
 
 $(OBJODIR)/%.o: %.c
 	@mkdir -p $(OBJODIR);

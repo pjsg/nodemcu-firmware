@@ -19,8 +19,13 @@
 
 static ip_addr_t host_ip; // for dns
 
-static __attribute__((section(".clientcert.flash"))) char client_cert_area[INTERNAL_FLASH_SECTOR_SIZE];
-static __attribute__((section(".servercert.flash"))) char server_cert_area[INTERNAL_FLASH_SECTOR_SIZE];
+#ifdef HAVE_SSL_SERVER_CRT
+#include HAVE_SSL_SERVER_CRT
+#else
+__attribute__((section(".servercert.flash"))) unsigned char net_server_cert_area[INTERNAL_FLASH_SECTOR_SIZE];
+#endif
+
+__attribute__((section(".clientcert.flash"))) unsigned char net_client_cert_area[INTERNAL_FLASH_SECTOR_SIZE];
 
 #if 0
 static int expose_array(lua_State* L, char *array, unsigned short len);
@@ -1553,7 +1558,7 @@ static int net_cert_auth(lua_State *L)
 {
   int enable;
 
-  uint32_t flash_offset = platform_flash_mapped2phys((uint32_t) &client_cert_area[0]);
+  uint32_t flash_offset = platform_flash_mapped2phys((uint32_t) &net_client_cert_area[0]);
   if ((flash_offset & 0xfff) || flash_offset > 0xff000 || INTERNAL_FLASH_SECTOR_SIZE != 0x1000) {
     // THis should never happen
     return luaL_error( L, "bad offset" );
@@ -1575,7 +1580,7 @@ static int net_cert_auth(lua_State *L)
 
   if (enable) {
     // See if there is a cert there
-    if (client_cert_area[0] == 0x00 || client_cert_area[0] == 0xff) {
+    if (net_client_cert_area[0] == 0x00 || net_client_cert_area[0] == 0xff) {
       return luaL_error( L, "no certificates found" );
     }
     rc = espconn_secure_cert_req_enable(1, flash_offset / INTERNAL_FLASH_SECTOR_SIZE);
@@ -1592,7 +1597,7 @@ static int net_cert_verify(lua_State *L)
 {
   int enable;
 
-  uint32_t flash_offset = platform_flash_mapped2phys((uint32_t) &server_cert_area[0]);
+  uint32_t flash_offset = platform_flash_mapped2phys((uint32_t) &net_server_cert_area[0]);
   if ((flash_offset & 0xfff) || flash_offset > 0xff000 || INTERNAL_FLASH_SECTOR_SIZE != 0x1000) {
     // THis should never happen
     return luaL_error( L, "bad offset" );
@@ -1615,7 +1620,7 @@ static int net_cert_verify(lua_State *L)
 
   if (enable) {
     // See if there is a cert there
-    if (server_cert_area[0] == 0x00 || server_cert_area[0] == 0xff) {
+    if (net_server_cert_area[0] == 0x00 || net_server_cert_area[0] == 0xff) {
       return luaL_error( L, "no certificates found" );
     }
     rc = espconn_secure_ca_enable(1, flash_offset / INTERNAL_FLASH_SECTOR_SIZE);
