@@ -22,7 +22,7 @@
 # Generate the certificates and keys for testing.
 #
 
-PROJECT_NAME="TLS Project"
+PROJECT_NAME="Nodemcu Project"
 
 # Generate the openssl configuration files.
 cat > ca_cert.conf << EOF  
@@ -41,7 +41,7 @@ prompt                 = no
 
 [ req_distinguished_name ]
  O                      = $PROJECT_NAME
- CN                     = 127.0.0.1
+ CN                     = Nodemcu Client cert
 EOF
 
 cat > device_cert.conf << EOF  
@@ -54,22 +54,22 @@ prompt                 = no
 EOF
 
 # private key generation
-openssl genrsa -out TLS.ca_key.pem 1024
-openssl genrsa -out TLS.key_1024.pem 1024
+openssl genrsa -out TLS.ca_key.pem 2048
+openssl genrsa -out TLS.key_1024.pem 2048
 
 # convert private keys into DER format
 openssl rsa -in TLS.key_1024.pem -out TLS.key_1024 -outform DER
 
 # cert requests
-openssl req -out TLS.ca_x509.req -key TLS.ca_key.pem -new \
+openssl req -out TLS.ca_x509.req -sha256 -key TLS.ca_key.pem -new \
             -config ./ca_cert.conf
-openssl req -out TLS.x509_1024.req -key TLS.key_1024.pem -new \
+openssl req -out TLS.x509_1024.req -sha256 -key TLS.key_1024.pem -new \
             -config ./certs.conf 
 
 # generate the actual certs.
-openssl x509 -req -in TLS.ca_x509.req -out TLS.ca_x509.pem \
+openssl x509 -req -in TLS.ca_x509.req -sha256 -out TLS.ca_x509.pem \
             -sha1 -days 5000 -signkey TLS.ca_key.pem
-openssl x509 -req -in TLS.x509_1024.req -out TLS.x509_1024.pem \
+openssl x509 -req -in TLS.x509_1024.req -sha256 -out TLS.x509_1024.pem \
             -sha1 -CAcreateserial -days 5000 \
             -CA TLS.ca_x509.pem -CAkey TLS.ca_key.pem
 

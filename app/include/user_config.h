@@ -55,6 +55,7 @@
 #endif
 
 #define CLIENT_SSL_ENABLE
+//#define CLIENT_SSL_CERT_AUTH_ENABLE
 //#define MD2_ENABLE
 #define SHA2_ENABLE
 

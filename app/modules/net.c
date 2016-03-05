@@ -1740,7 +1740,9 @@ static const LUA_REG_TYPE net_array_map[] = {
 
 static const LUA_REG_TYPE net_cert_map[] = {
   { LSTRKEY( "verify" ), 	LFUNCVAL( net_cert_verify ) },  
+#ifdef CLIENT_SSL_CERT_AUTH_ENABLE
   { LSTRKEY( "auth" ),		LFUNCVAL( net_cert_auth ) }, 
+#endif
   { LNILKEY, LNILVAL }
 };
 
