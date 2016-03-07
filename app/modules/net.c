@@ -1435,7 +1435,7 @@ static int net_multicastLeave( lua_State* L )
 }
 
 // Returns NULL on success, error message otherwise
-static const char *append_pem_blob(const char *pem, const char *type, uint8_t **buffer_p, uint8_t *buffer_limit) {
+static const char *append_pem_blob(const char *pem, const char *type, uint8_t **buffer_p, uint8_t *buffer_limit, const char *name) {
   char unb64[256];
   memset(unb64, 0xff, sizeof(unb64));
   int i;
@@ -1503,16 +1503,14 @@ static const char *append_pem_blob(const char *pem, const char *type, uint8_t **
   size_t len = dest - (buffer + 32 + 2);
 
   memset(buffer, 0, 32);
-  for (i = 0; i < 20 && type[i]; i++) {
-    buffer[i] = tolower(type[i]);
-  }
+  strcpy(buffer, name);
   buffer[32] = len & 0xff;
   buffer[33] = (len >> 8) & 0xff;
   *buffer_p = dest;
   return NULL;
 }
 
-static const char *fill_page_with_pem(lua_State *L, int flash_offset, const char **types) 
+static const char *fill_page_with_pem(lua_State *L, int flash_offset, const char **types, const char **names) 
 {
   uint8_t  *buffer = luaM_malloc(L, INTERNAL_FLASH_SECTOR_SIZE);
   uint8_t  *buffer_base = buffer;
@@ -1520,10 +1518,10 @@ static const char *fill_page_with_pem(lua_State *L, int flash_offset, const char
 
   int argno;
 
-  for (argno = 1; argno <= lua_gettop(L) && types[argno]; argno++) {
+  for (argno = 1; argno <= lua_gettop(L) && types[argno - 1]; argno++) {
     const char *pem = lua_tostring(L, argno);
 
-    const char *error = append_pem_blob(pem, types[argno], &buffer, buffer_limit);
+    const char *error = append_pem_blob(pem, types[argno - 1], &buffer, buffer_limit, names[argno - 1]);
     if (error) {
       luaM_free(L, buffer_base);
       return error;
@@ -1532,7 +1530,7 @@ static const char *fill_page_with_pem(lua_State *L, int flash_offset, const char
 
   if (argno <= lua_gettop(L)) {
     luaM_free(L, buffer_base);
-    return "Extra arguments ignored";
+    return "Extra arguments provided";
   }
 
   memset(buffer, 0xff, buffer_limit - buffer);
@@ -1565,8 +1563,9 @@ static int net_cert_auth(lua_State *L)
   }
 
   if (lua_type(L, 1) == LUA_TSTRING) {
-    const char *types[3] = { "PRIVATE KEY", "CERTIFICATE", NULL };
-    const char *error = fill_page_with_pem(L, flash_offset, types);
+    const char *types[3] = { "CERTIFICATE", "RSA PRIVATE KEY", NULL };
+    const char *names[2] = { "certificate", "private_key" };
+    const char *error = fill_page_with_pem(L, flash_offset, types, names);
     if (error) {
       return luaL_error(L, error);
     }
@@ -1605,8 +1604,9 @@ static int net_cert_verify(lua_State *L)
 
   if (lua_type(L, 1) == LUA_TSTRING) {
     const char *types[2] = { "CERTIFICATE", NULL };
+    const char *names[1] = { "certificate" };
 
-    const char *error = fill_page_with_pem(L, flash_offset, types);
+    const char *error = fill_page_with_pem(L, flash_offset, types, names);
     if (error) {
       return luaL_error(L, error);
     }
