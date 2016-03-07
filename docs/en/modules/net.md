@@ -284,7 +284,7 @@ Sets the IP of the DNS server used to resolve hostnames. Default: resolver1.open
 
 # net.cert Module
 
-This controls certificate verification and certificate authentication when SSL is in use. 
+This controls certificate verification when SSL is in use. 
 
 ## net.cert.verify()
 
@@ -378,42 +378,3 @@ The alternative approach is easier for development, and that is to supply the PE
 will store the certificate into the flash chip and turn on verification for that certificate. Subsequent boots of the nodemcu can then
 use `net.cert.verify(true)` and use the stored certificate.
 
-## net.cert.auth()
-
-Controls the certificate authentication process when the Nodemcu makes a secure connection. This is when
-the Nodemcu identifies itself using a certificate to the remote server. This is ad advanced option
-and is not included in the default firmware builds. It has to be enabled by defining CLIENT_SSL_CERT_AUTH_ENABLE in user_config.h.
-
-#### Syntax
-`net.cert.auth(enable)`
-`net.cert.auth(privatepem, certpem)`
-
-#### Parameters
-- `enable` A boolean which indicates whether verification should be enabled or not. The default at boot is `false`.
-- `privatepem` A string containing the private key associated with the client certificate (in PEM format).
-- `certpem` A string containing the client certificate (in PEM format).
-
-#### Returns
-`true` if it worked. 
-
-Can throw a number of errors if invalid data is supplied.
-
-#### Example
-```
-net.cert.auth(true)
-http.get("https://example.com/info", nil, function (code, resp) print(code, resp) end)
-```
-
-#### Notes
-The private key/certificate pair needed for authentication is stored in the flash chip. The `net.cert.auth` call with `true`
-enables authenticate using the value stored in the flash. 
-
-The private key/certificate pair has to be loaded into the flash chip at first boot time. It would be poor security
-practice to build the private key into the firmware as that would encourage developers to use the same private key
-on multiple installed instances of the nodemcu.
-
-The private key and certificate must be provided (once) to `net.cert.auth` which then stores them in the flash and
-enables their use for client authentication. On all subsequent boots, `net.cert.auth(true)` can be invoked, and it will
-use the stored values. Note that there is no (current) Lua API that allows reading of the stored credentials
-and this is deliberate. Of course, a sufficiently motivated attacker can access the flash chip directly to
-read the data.
