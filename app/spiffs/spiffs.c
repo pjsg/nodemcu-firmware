@@ -184,7 +184,10 @@ int myspiffs_rename( const char *old, const char *newname ){
   return SPIFFS_rename(&fs, (char *)old, (char *)newname);
 }
 size_t myspiffs_size( int fd ){
-  return SPIFFS_size(&fs, (spiffs_file)fd);
+  int32_t curpos = SPIFFS_tell(&fs, (spiffs_file) fd);
+  int32_t size = SPIFFS_lseek(&fs, (spiffs_file) fd, SPIFFS_SEEK_END, 0);
+  (void) SPIFFS_lseek(&fs, (spiffs_file) fd, SPIFFS_SEEK_SET, curpos);
+  return size;
 }
 #if 0
 void test_spiffs() {
