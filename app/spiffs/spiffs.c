@@ -1,7 +1,7 @@
 #include "c_stdio.h"
 #include "platform.h"
 #include "spiffs.h"
-  
+
 spiffs fs;
 
 #define LOG_PAGE_SIZE       256
@@ -44,35 +44,38 @@ The small 4KB sectors allow for greater flexibility in applications th
 
 ********************/
 
+static void myspiffs_set_cfg(spiffs_config *cfg) {
+#ifdef SPIFFS_FIXED_LOCATION
+  cfg->phys_addr = SPIFFS_FIXED_LOCATION;
+#else
+  cfg->phys_addr = ( u32_t )platform_flash_get_first_free_block_address( NULL ); 
+#endif
+  cfg->phys_addr += 0x3FFF;
+  cfg->phys_addr &= 0xFFFFC000;  // align to 4 sector.
+  cfg->phys_size = INTERNAL_FLASH_SIZE - ( ( u32_t )cfg->phys_addr );
+  cfg->phys_erase_block = INTERNAL_FLASH_SECTOR_SIZE; // according to datasheet
+  cfg->log_block_size = INTERNAL_FLASH_SECTOR_SIZE * 2; // Improve utilization
+  cfg->log_page_size = LOG_PAGE_SIZE; // as we said
+  NODE_DBG("fs.start:%x,max:%x\n",cfg->phys_addr,cfg->phys_size);
+
+  cfg->hal_read_f = my_spiffs_read;
+  cfg->hal_write_f = my_spiffs_write;
+  cfg->hal_erase_f = my_spiffs_erase;
+}
+
 bool myspiffs_mount() {
   spiffs_config cfg;
-#ifdef SPIFFS_FIXED_LOCATION
-  cfg.phys_addr = SPIFFS_FIXED_LOCATION;
-#else
-  cfg.phys_addr = ( u32_t )platform_flash_get_first_free_block_address( NULL ); 
-#endif
-  cfg.phys_addr += 0x3FFF;
-  cfg.phys_addr &= 0xFFFFC000;  // align to 4 sector.
-  cfg.phys_size = INTERNAL_FLASH_SIZE - ( ( u32_t )cfg.phys_addr );
-  cfg.phys_erase_block = INTERNAL_FLASH_SECTOR_SIZE; // according to datasheet
-  cfg.log_block_size = INTERNAL_FLASH_SECTOR_SIZE * 2; // Improve utilization
-  cfg.log_page_size = LOG_PAGE_SIZE; // as we said
-  NODE_DBG("fs.start:%x,max:%x\n",cfg.phys_addr,cfg.phys_size);
-
-  cfg.hal_read_f = my_spiffs_read;
-  cfg.hal_write_f = my_spiffs_write;
-  cfg.hal_erase_f = my_spiffs_erase;
+  myspiffs_set_cfg(&cfg);
 
 #ifdef SPIFFS_USE_MAGIC_LENGTH
-  int size = SPIFFS_probe(&cfg);
-  if (size < 0) {
-      return size;
+  int size = SPIFFS_probe_fs(&cfg);
+
+  if (size > 0 && size < cfg.phys_size) {
+    NODE_DBG("Overriding size:%x\n",size);
+    cfg.phys_size = size;
   }
-  if (size > cfg.phys_size) {
-      return SPIFFS_ERR_PROBE_NOT_A_FS;
-  }
-  cfg.phys_size = size;
 #endif
+  fs.err_code = 0;
   
   int res = SPIFFS_mount(&fs,
     &cfg,
@@ -87,7 +90,7 @@ bool myspiffs_mount() {
 #endif
     // myspiffs_check_callback);
     0);
-  NODE_DBG("mount res: %i\n", res);
+  NODE_DBG("mount res: %i, %i\n", res, fs.err_code);
   return res == SPIFFS_OK;
 }
 
@@ -100,21 +103,13 @@ void myspiffs_unmount() {
 int myspiffs_format( void )
 {
   SPIFFS_unmount(&fs);
-  u32_t sect_first, sect_last;
-#ifdef SPIFFS_FIXED_LOCATION
-  sect_first = SPIFFS_FIXED_LOCATION;
-#else
-  sect_first = ( u32_t )platform_flash_get_first_free_block_address( NULL ); 
-#endif
-  sect_first += 0x3FFF;
-  sect_first &= 0xFFFFC000;  // align to 4 sector.
-  sect_first = platform_flash_get_sector_of_address(sect_first);
-  sect_last = INTERNAL_FLASH_SIZE - SYS_PARAM_SEC_NUM;
-  sect_last = platform_flash_get_sector_of_address(sect_last);
-  NODE_DBG("sect_first: %x, sect_last: %x\n", sect_first, sect_last);
-  while( sect_first <= sect_last )
-    if( platform_flash_erase_sector( sect_first ++ ) == PLATFORM_ERR )
-      return 0;
+  myspiffs_mount();
+  SPIFFS_unmount(&fs);
+
+  if (SPIFFS_format(&fs) < 0) {
+    return 0;
+  }
+
   myspiffs_mount();
   return 1;
 }
