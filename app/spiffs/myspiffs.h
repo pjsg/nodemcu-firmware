@@ -1,5 +1,5 @@
 #include "spiffs.h"
-void myspiffs_mount();
+bool myspiffs_mount();
 void myspiffs_unmount();
 int myspiffs_open(const char *name, int flags);
 int myspiffs_close( int fd );

@@ -44,7 +44,7 @@ The small 4KB sectors allow for greater flexibility in applications th
 
 ********************/
 
-void myspiffs_mount() {
+bool myspiffs_mount() {
   spiffs_config cfg;
 #ifdef SPIFFS_FIXED_LOCATION
   cfg.phys_addr = SPIFFS_FIXED_LOCATION;
@@ -55,13 +55,24 @@ void myspiffs_mount() {
   cfg.phys_addr &= 0xFFFFC000;  // align to 4 sector.
   cfg.phys_size = INTERNAL_FLASH_SIZE - ( ( u32_t )cfg.phys_addr );
   cfg.phys_erase_block = INTERNAL_FLASH_SECTOR_SIZE; // according to datasheet
-  cfg.log_block_size = INTERNAL_FLASH_SECTOR_SIZE; // let us not complicate things
+  cfg.log_block_size = INTERNAL_FLASH_SECTOR_SIZE * 2; // Improve utilization
   cfg.log_page_size = LOG_PAGE_SIZE; // as we said
   NODE_DBG("fs.start:%x,max:%x\n",cfg.phys_addr,cfg.phys_size);
 
   cfg.hal_read_f = my_spiffs_read;
   cfg.hal_write_f = my_spiffs_write;
   cfg.hal_erase_f = my_spiffs_erase;
+
+#ifdef SPIFFS_USE_MAGIC_LENGTH
+  int size = SPIFFS_probe(&cfg);
+  if (size < 0) {
+      return size;
+  }
+  if (size > cfg.phys_size) {
+      return SPIFFS_ERR_PROBE_NOT_A_FS;
+  }
+  cfg.phys_size = size;
+#endif
   
   int res = SPIFFS_mount(&fs,
     &cfg,
@@ -77,6 +88,7 @@ void myspiffs_mount() {
     // myspiffs_check_callback);
     0);
   NODE_DBG("mount res: %i\n", res);
+  return res == SPIFFS_OK;
 }
 
 void myspiffs_unmount() {
