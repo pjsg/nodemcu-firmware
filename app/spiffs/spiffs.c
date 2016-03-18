@@ -4,7 +4,10 @@
 
 spiffs fs;
 
-#define LOG_PAGE_SIZE       256
+#define LOG_PAGE_SIZE       	256
+#define LOG_BLOCK_SIZE		(INTERNAL_FLASH_SECTOR_SIZE * 2)
+#define LOG_BLOCK_SIZE_SMALL_FS	(INTERNAL_FLASH_SECTOR_SIZE)
+#define MIN_BLOCKS_FS		4
   
 static u8_t spiffs_work_buf[LOG_PAGE_SIZE*2];
 static u8_t spiffs_fds[32*4];
@@ -44,37 +47,91 @@ The small 4KB sectors allow for greater flexibility in applications th
 
 ********************/
 
-static void myspiffs_set_cfg(spiffs_config *cfg) {
+static bool myspiffs_set_location(spiffs_config *cfg, int align, int offset, int block_size) {
 #ifdef SPIFFS_FIXED_LOCATION
-  cfg->phys_addr = SPIFFS_FIXED_LOCATION;
+  cfg->phys_addr = (SPIFFS_FIXED_LOCATION + block_size - 1) & ~(block_size-1);
 #else
-  cfg->phys_addr = ( u32_t )platform_flash_get_first_free_block_address( NULL ); 
+  cfg->phys_addr = ( u32_t )platform_flash_get_first_free_block_address( NULL ) + offset; 
+  cfg->phys_addr = (cfg->phys_addr + align - 1) & ~(align - 1);
 #endif
-  cfg->phys_addr += 0x3FFF;
-  cfg->phys_addr &= 0xFFFFC000;  // align to 4 sector.
-  cfg->phys_size = INTERNAL_FLASH_SIZE - ( ( u32_t )cfg->phys_addr );
+  cfg->phys_size = (INTERNAL_FLASH_SIZE - ( ( u32_t )cfg->phys_addr )) & ~(block_size - 1);
+  if ((int) cfg->phys_size < 0) {
+    return FALSE;
+  }
+  cfg->log_block_size = block_size; // Improve utilization
+
+  return (cfg->phys_size / block_size) >= MIN_BLOCKS_FS;
+}
+
+/*
+ * Returns  TRUE if FS was found
+ * align must be a power of two
+ */
+static bool myspiffs_set_cfg(spiffs_config *cfg, int align, int offset) {
   cfg->phys_erase_block = INTERNAL_FLASH_SECTOR_SIZE; // according to datasheet
-  cfg->log_block_size = INTERNAL_FLASH_SECTOR_SIZE * 2; // Improve utilization
   cfg->log_page_size = LOG_PAGE_SIZE; // as we said
-  NODE_DBG("fs.start:%x,max:%x\n",cfg->phys_addr,cfg->phys_size);
 
   cfg->hal_read_f = my_spiffs_read;
   cfg->hal_write_f = my_spiffs_write;
   cfg->hal_erase_f = my_spiffs_erase;
+
+  if (!myspiffs_set_location(cfg, align, offset, LOG_BLOCK_SIZE)) {
+    if (!myspiffs_set_location(cfg, align, offset, LOG_BLOCK_SIZE_SMALL_FS)) {
+      return FALSE;
+    }
+  }
+
+  NODE_DBG("fs.start:%x,max:%x\n",cfg->phys_addr,cfg->phys_size);
+
+#ifdef SPIFFS_USE_MAGIC_LENGTH
+  int size = SPIFFS_probe_fs(cfg);
+
+  if (size > 0 && size < cfg->phys_size) {
+    NODE_DBG("Overriding size:%x\n",size);
+    cfg->phys_size = size;
+  }
+  if (size > 0) {
+    return TRUE;
+  }
+  return FALSE;
+#else
+  return TRUE;
+#endif
+}
+
+static bool myspiffs_find_cfg(spiffs_config *cfg) {
+  int i;
+
+  if (INTERNAL_FLASH_SIZE >= 700000) {
+    for (i = 0; i < 8; i++) {
+      if (myspiffs_set_cfg(cfg, 0x10000, 0x10000 * i)) {
+	return TRUE;
+      }
+    }
+  }
+
+  for (i = 0; i < 8; i++) {
+    if (myspiffs_set_cfg(cfg, LOG_BLOCK_SIZE, LOG_BLOCK_SIZE * i)) {
+      return TRUE;
+    }
+  }
+
+  // No existing file system -- set up for a format
+  if (INTERNAL_FLASH_SIZE >= 700000) {
+    myspiffs_set_cfg(cfg, 0x10000, 0x10000);
+  } else {
+    myspiffs_set_cfg(cfg, LOG_BLOCK_SIZE, 0);
+  }
+
+  return FALSE;
 }
 
 bool myspiffs_mount() {
   spiffs_config cfg;
-  myspiffs_set_cfg(&cfg);
-
-#ifdef SPIFFS_USE_MAGIC_LENGTH
-  int size = SPIFFS_probe_fs(&cfg);
-
-  if (size > 0 && size < cfg.phys_size) {
-    NODE_DBG("Overriding size:%x\n",size);
-    cfg.phys_size = size;
+  if (!myspiffs_find_cfg(&cfg)) {
+    return FALSE;
   }
-#endif
+
   fs.err_code = 0;
   
   int res = SPIFFS_mount(&fs,

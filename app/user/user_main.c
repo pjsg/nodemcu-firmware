@@ -120,16 +120,6 @@ void nodemcu_init(void)
         flash_rom_set_size_byte(flash_safe_get_size_byte());
         // Write out init data at real location.
         no_init_data = true;
-
-        if( !fs_format() )
-        {
-            NODE_ERR( "\n*** ERROR ***: unable to format. FS might be compromised.\n" );
-            NODE_ERR( "It is advised to re-flash the NodeMCU image.\n" );
-        }
-        else{
-            NODE_ERR( "format done.\n" );
-        }
-        fs_unmount();   // mounted by format.
     }
 #endif // defined(FLASH_SAFE_API)
 
