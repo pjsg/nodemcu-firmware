@@ -53,6 +53,34 @@ net.createServer(net.TCP, 30) -- 30s timeout
 #### See also
 [`net.createConnection()`](#netcreateconnection)
 
+## net.multicastJoin()
+
+Join multicast group.
+
+#### Syntax
+`net.multicastJoin(if_ip, multicast_ip)`
+
+#### Parameters
+- `if_ip` string containing the interface ip to join the multicast group. "any" or "" affects all interfaces.
+- `multicast_ip` of the group to join
+
+#### Returns
+`nil`
+
+## net.multicastLeave()
+
+Leave multicast group.
+
+#### Syntax
+`net.multicastLeave(if_ip, multicast_ip)`
+
+#### Parameters
+- `if_ip` string containing the interface ip to leave the multicast group. "any" or "" affects all interfaces.
+- `multicast_ip` of the group to leave
+
+#### Returns
+`nil`
+
 # net.server Module
 
 ## net.server:close()
@@ -100,15 +128,29 @@ Listen on port from IP address.
 sv = net.createServer(net.TCP, 30)
 -- server listens on 80, if data received, print data to console and send "hello world" back to caller
 sv:listen(80, function(c)
-	c:on("receive", function(c, pl) 
-		print(pl)
-	end)
-	c:send("hello world")
+  c:on("receive", function(c, pl) 
+    print(pl)
+  end)
+  c:send("hello world")
 end)
 ```
 
 #### See also
 [`net.createServer()`](#netcreateserver)
+
+## net.server:on()
+
+UDP server only: Register callback functions for specific events.
+
+#### See also
+[`net.socket:on()`](#netsocketon)
+
+## net.server:send()
+
+UDP server only: Sends data to remote peer.
+
+#### See also
+[`net.socket:send()`](#netsocketsend)
 
 # net.socket Module
 ## net.socket:close()
@@ -168,6 +210,36 @@ sk = nil
 #### See also
 [`net.createServer()`](#netcreateserver)
 
+## net.socket:getpeer()
+
+Retrieve port and ip of peer.
+
+#### Syntax
+`getpeer()`
+
+#### Parameters
+none
+
+#### Returns
+- `ip` of peer
+- `port` of peer
+
+## net.socket:hold()
+
+Throttle data reception by placing a request to block the TCP receive function. This request is not effective immediately, Espressif recommends to call it while reserving 5*1460 bytes of memory.
+
+#### Syntax
+`hold()`
+
+#### Parameters
+none
+
+#### Returns
+`nil`
+
+#### See also
+[`net.socket:unhold()`](#netsocketunhold)
+
 ## net.socket:on()
 
 Register callback functions for specific events.
@@ -184,24 +256,27 @@ Register callback functions for specific events.
 
 #### Example
 ```lua
-sk = net.createConnection(net.TCP, 0)
-sk:on("receive", function(sck, c) print(c) end )
-sk:connect(80,"192.168.0.66")
-sk:on("connection", function(sck,c)
-    -- Wait for connection before sending.
-    sk:send("GET / HTTP/1.1\r\nHost: 192.168.0.66\r\nConnection: keep-alive\r\nAccept: */*\r\n\r\n")
+srv = net.createConnection(net.TCP, 0)
+srv:on("receive", function(sck, c) print(c) end)
+srv:connect(80,"192.168.0.66")
+srv:on("connection", function(sck, c)
+  -- Wait for connection before sending.
+  sck:send("GET / HTTP/1.1\r\nHost: 192.168.0.66\r\nConnection: keep-alive\r\nAccept: */*\r\n\r\n")
 end)
 ```
 
 #### See also
-[`net.createServer()`](#netcreateserver)
+- [`net.createServer()`](#netcreateserver)
+- [`net.socket:hold()`](#netsockethold)
 
 ## net.socket:send()
 
-Sends data to server.
+Sends data to remote peer.
 
 #### Syntax
-`send(string, function(sent))`
+`send(string[, function(sent)])`
+
+`sck:send(data, fnA)` is functionally equivalent to `sck:send(data) sck:on("sent", fnA)`.
 
 #### Parameters
 - `string` data in string which will be sent to server
@@ -212,10 +287,70 @@ Sends data to server.
 
 #### Note
 
-Multiple consecutive `send()` calls aren't guaranteed to work (and often don't) as network requests are treated as separate tasks by the SDK. Instead, subscribe to the "sent" event on the socket and send additional data (or close) in that callback. See [#730](https://github.com/nodemcu/nodemcu-firmware/issues/730#issuecomment-154241161) for an example and explanation.
+Multiple consecutive `send()` calls aren't guaranteed to work (and often don't) as network requests are treated as separate tasks by the SDK. Instead, subscribe to the "sent" event on the socket and send additional data (or close) in that callback. See [#730](https://github.com/nodemcu/nodemcu-firmware/issues/730#issuecomment-154241161) for details.
+
+#### Example
+```lua
+srv = net.createServer(net.TCP)
+srv:listen(80, function(conn)
+  conn:on("receive", function(sck, req)
+    local response = {}
+
+    -- if you're sending back HTML over HTTP you'll want something like this instead
+    -- local response = {"HTTP/1.0 200 OK\r\nServer: NodeMCU on ESP8266\r\nContent-Type: text/html\r\n\r\n"}
+
+    response[#response + 1] = "lots of data"
+    response[#response + 1] = "even more data"
+    response[#response + 1] = "e.g. content read from a file"
+    
+	 -- sends and removes the first element from the 'response' table
+    local function send()
+      if #response > 0
+        then sck:send(table.remove(response, 1))
+      else
+        sck:close()
+      end
+    end
+
+    -- triggers the send() function again once the first chunk of data was sent
+    sck:on("sent", send)
+    
+    send()
+  end)
+end)
+```
+If you do not or can not keep all the data you send back in memory at one time (remember that `response` is an aggregation) you may use explicit callbacks instead of building up a table like so:
+
+```lua
+sck:send(header, function() 
+  local data1 = "some large chunk of dynamically loaded data"
+  sck:send(data1, function()
+    local data2 = "even more dynamically loaded data"
+    sck:send(data2, function() 
+      sck:close()
+    end)
+  end)
+end)
+```
 
 #### See also
 [`net.socket:on()`](#netsocketon)
+
+## net.socket:unhold()
+
+Unblock TCP receiving data by revocation of a preceding `hold()`.
+
+#### Syntax
+`unhold()`
+
+#### Parameters
+none
+
+#### Returns
+`nil`
+
+#### See also
+[`net.socket:hold()`](#netsockethold)
 
 # net.dns Module
 

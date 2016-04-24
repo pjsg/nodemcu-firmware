@@ -154,7 +154,8 @@ Publishes a message.
 - `message` the message to publish, (buffer or string)
 - `qos` QoS level
 - `retain` retain flag
-- `function(client)` optional callback fired when PUBACK received
+- `function(client)` optional callback fired when PUBACK received.  NOTE: When calling publish() more than once, the last callback function defined will be called for ALL publish commands.
+  
 
 #### Returns
 `true` on success, `false` otherwise
@@ -171,7 +172,7 @@ Subscribes to one or several topics.
 - `topic` a [topic string](http://www.hivemq.com/blog/mqtt-essentials-part-5-mqtt-topics-best-practices)
 - `qos` QoS subscription level, default 0
 - `table` array of 'topic, qos' pairs to subscribe to
-- `function(client)` optional callback fired when subscription(s) succeeded
+- `function(client)` optional callback fired when subscription(s) succeeded.  NOTE: When calling subscribe() more than once, the last callback function defined will be called for ALL subscribe commands.
 
 #### Returns
 `true` on success, `false` otherwise
@@ -183,4 +184,29 @@ m:subscribe("/topic",0, function(conn) print("subscribe success") end)
 
 -- or subscribe multiple topic (topic/0, qos = 0; topic/1, qos = 1; topic2 , qos = 2)
 m:subscribe({["topic/0"]=0,["topic/1"]=1,topic2=2}, function(conn) print("subscribe success") end)
+```
+
+## mqtt.client:unsubscribe()
+
+Unsubscribes from one or several topics.
+
+#### Syntax
+`mqtt:unsubscribe(topic[, function(client)])`
+`mqtt:unsubscribe(table[, function(client)])`
+
+#### Parameters
+- `topic` a [topic string](http://www.hivemq.com/blog/mqtt-essentials-part-5-mqtt-topics-best-practices)
+- `table` array of 'topic, anything' pairs to unsubscribe from
+- `function(client)` optional callback fired when unsubscription(s) succeeded.  NOTE: When calling unsubscribe() more than once, the last callback function defined will be called for ALL unsubscribe commands.
+
+#### Returns
+`true` on success, `false` otherwise
+
+#### Example
+```lua
+-- unsubscribe topic
+m:unsubscribe("/topic", function(conn) print("unsubscribe success") end)
+
+-- or unsubscribe multiple topic (topic/0; topic/1; topic2)
+m:unsubscribe({["topic/0"]=0,["topic/1"]=0,topic2="anything"}, function(conn) print("unsubscribe success") end)
 ```
