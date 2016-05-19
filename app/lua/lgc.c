@@ -202,11 +202,11 @@ static int traversetable (global_State *g, Table *h) {
 */
 static void traverseproto (global_State *g, Proto *f) {
   int i;
-  if (f->source) stringmark(f->source);
+  if (f->source && iscollectable(&f->source->tsv)) stringmark(f->source);
   for (i=0; i<f->sizek; i++)  /* mark literals */
     markvalue(g, &f->k[i]);
   for (i=0; i<f->sizeupvalues; i++) {  /* mark upvalue names */
-    if (f->upvalues[i])
+    if (f->upvalues[i] && iscollectable(&f->upvalues[i]->tsv))
       stringmark(f->upvalues[i]);
   }
   for (i=0; i<f->sizep; i++) {  /* mark nested protos */
@@ -214,7 +214,7 @@ static void traverseproto (global_State *g, Proto *f) {
       markobject(g, f->p[i]);
   }
   for (i=0; i<f->sizelocvars; i++) {  /* mark local-variable names */
-    if (f->locvars[i].varname)
+    if (f->locvars[i].varname && iscollectable(&f->locvars[i].varname->tsv))
       stringmark(f->locvars[i].varname);
   }
 }

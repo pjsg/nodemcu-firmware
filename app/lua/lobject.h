@@ -348,7 +348,8 @@ typedef TValuefields TValue;
 #define setttype(obj, _tt) ( ttype_sig(obj) = add_sig(_tt) )
 #endif // #ifndef LUA_PACK_VALUE
 
-#define iscollectable(o)	(ttype(o) >= LUA_TSTRING)
+#define data_is_readonly(ptr)     (((uint32_t) (ptr)) >= 0x40200000)
+#define iscollectable(o)	(ttype(o) >= LUA_TSTRING && !data_is_readonly(o))
 
 
 

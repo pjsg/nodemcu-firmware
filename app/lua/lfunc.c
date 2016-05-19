@@ -16,6 +16,7 @@
 #include "lmem.h"
 #include "lobject.h"
 #include "lstate.h"
+#include "lauxlib.h"
 
 
 
@@ -142,18 +143,25 @@ Proto *luaF_newproto (lua_State *L) {
 
 
 void luaF_freeproto (lua_State *L, Proto *f) {
-  luaM_freearray(L, f->p, f->sizep, Proto *);
-  luaM_freearray(L, f->k, f->sizek, TValue);
-  luaM_freearray(L, f->locvars, f->sizelocvars, struct LocVar);
-  luaM_freearray(L, f->upvalues, f->sizeupvalues, TString *);
+  if (!data_is_readonly(f->p))
+    luaM_freearray(L, f->p, f->sizep, Proto *);
+  if (!data_is_readonly(f->k))
+    luaM_freearray(L, f->k, f->sizek, TValue);
+  if (!data_is_readonly(f->locvars))
+    luaM_freearray(L, f->locvars, f->sizelocvars, struct LocVar);
+  if (!data_is_readonly(f->upvalues))
+    luaM_freearray(L, f->upvalues, f->sizeupvalues, TString *);
   if (!proto_is_readonly(f)) {
-    luaM_freearray(L, f->code, f->sizecode, Instruction);
+    if (!data_is_readonly(f->code))
+      luaM_freearray(L, f->code, f->sizecode, Instruction);
 #ifdef LUA_OPTIMIZE_DEBUG
     if (f->packedlineinfo) {
-      luaM_freearray(L, f->packedlineinfo, c_strlen(cast(char *, f->packedlineinfo))+1, unsigned char);
+      if (!data_is_readonly(f->packedlineinfo))
+	luaM_freearray(L, f->packedlineinfo, c_strlen(cast(char *, f->packedlineinfo))+1, unsigned char);
     }
 #else
-    luaM_freearray(L, f->lineinfo, f->sizelineinfo, int);
+    if (!data_is_readonly(f->lineinfo))
+      luaM_freearray(L, f->lineinfo, f->sizelineinfo, int);
 #endif
   }
   luaM_free(L, f);
