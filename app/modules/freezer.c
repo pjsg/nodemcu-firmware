@@ -31,7 +31,7 @@
 static volatile uint8_t flash_area[65536] __attribute__ ((aligned(4096), section(".irom0.text")));
 static uint32_t flash_area_phys;
 
-static uint32_t opts;
+static uint32_t opts = -1;
 #define OPT_CONSTANTS	1
 #define OPT_CONSTANT_VECTOR 2
 
@@ -58,7 +58,7 @@ static void *find_data(const void *src, size_t len) {
   }
   size_t blen = (len + 7) & ~7;
 
-  NODE_DBG("Looking for %d bytes (blocklen %d)\n", len, blen);
+  //NODE_DBG("Looking for %d bytes (blocklen %d)\n", len, blen);
 
   int32_t *ptr = ((int32_t *) flash_area) + 1;
 
@@ -66,7 +66,7 @@ static void *find_data(const void *src, size_t len) {
     int blocklen = *ptr;
     if (blocklen == blen) {
       if (memcmp(ptr + 1, src, len) == 0) {
-	NODE_DBG(".. found at 0x%08x\n", ptr);
+	//NODE_DBG(".. found at 0x%08x\n", ptr);
 	return (void *) (ptr + 1);
       }
     }
@@ -95,7 +95,7 @@ static void *find_data(const void *src, size_t len) {
     return NULL;
   }
 
-  NODE_DBG("Adding block at 0x%x\n", ptr);
+  //NODE_DBG("Adding block at 0x%x\n", ptr);
 
   int32_t *blockbase = ptr;
 
@@ -198,10 +198,11 @@ static TString *freeze_tstring(lua_State *L, TString *s, size_t *freedp) {
   return tstr;
 }
 
-static int do_freeze(lua_State *L, Proto *f) {
+static int do_freeze_proto(lua_State *L, Proto *f) {
   int i;
 
   if (!f || is_flash(f->code)) {
+    NODE_DBG("Early exit proto=0x%x\n", f);
     return 0;
   }
 
@@ -229,7 +230,7 @@ static int do_freeze(lua_State *L, Proto *f) {
     }
   }
 
-  if (all_readonly && f->sizeupvalues) {
+  if (all_readonly && f->sizeupvalues && !is_flash(f->upvalues)) {
     TString **ro_upvalues = find_data(f->upvalues, f->sizeupvalues * sizeof(TString));
     if (ro_upvalues) {
       luaM_freearray(L, f->upvalues, f->sizeupvalues, TString);
@@ -249,7 +250,7 @@ static int do_freeze(lua_State *L, Proto *f) {
     }
   }
 
-  if (all_readonly && f->sizelocvars) {
+  if (all_readonly && f->sizelocvars && !is_flash(f->locvars)) {
     LocVar *ro_locvars = find_data(f->locvars, f->sizelocvars * sizeof(LocVar));
     if (ro_locvars) {
       luaM_freearray(L, f->locvars, f->sizelocvars, LocVar);
@@ -277,7 +278,7 @@ static int do_freeze(lua_State *L, Proto *f) {
     }
 
     if (opts & OPT_CONSTANT_VECTOR) {
-      if (all_readonly && f->sizek) {
+      if (all_readonly && f->sizek && !is_flash(f->k)) {
 	TValue *ro_k = find_data(f->k, f->sizek * sizeof(TValue));
 	if (ro_k) {
 	  luaM_freearray(L, f->k, f->sizek, TValue);
@@ -289,7 +290,7 @@ static int do_freeze(lua_State *L, Proto *f) {
   }
 
 #ifdef LUA_OPTIMIZE_DEBUG
-  if (f->packedlineinfo) {
+  if (f->packedlineinfo && !is_flash(f->packedlineinfo)) {
     int datalen = c_strlen(cast(char *, f->packedlineinfo))+1;
     unsigned char *packedlineinfo = (unsigned char *) find_data(f->packedlineinfo, datalen);
     if (packedlineinfo) {
@@ -301,10 +302,42 @@ static int do_freeze(lua_State *L, Proto *f) {
 #endif
 
   for (i = 0; i < f->sizep; i++) {
-    freed += do_freeze(L, f->p[i]);
+    freed += do_freeze_proto(L, f->p[i]);
   }
 
   return freed;
+}
+
+static int do_freeze_closure(lua_State *L, Closure *cl) {
+  if (cl->c.isC) {
+    NODE_DBG("Skipping C Closure\n");
+    return 0;
+  }
+
+  Proto *f = cl->l.p;
+
+  // Now we have to freeze this block.....
+  int result = do_freeze_proto(L, f);
+
+  if (!result) {
+    return 0;
+  }
+
+  int i;
+  UpVal **upval = cl->l.upvals;
+
+  for (i = 0; i < cl->l.nupvalues; i++, upval++) {
+    TValue *val = (*upval)->v;
+
+    if (ttisfunction(val)) {
+      NODE_DBG("Upval closure\n");
+      Closure *inner = clvalue(val);
+
+      result += do_freeze_closure(L, inner);
+    }
+  }
+
+  return result;
 }
 
 // takes a function and returns the number of bytes of memory saved
@@ -312,10 +345,7 @@ static int freezer_freeze(lua_State *L) {
   if(!lua_isfunction(L, 1)) luaL_argerror(L, 1, "must be a Lua Function");
   Closure *cl = (Closure *) lua_topointer(L, 1);
 
-  Proto *f = cl->l.p;
-
-  // Now we have to freeze this block.....
-  int result = do_freeze(L, f);
+  int result = do_freeze_closure(L, cl);
 
   lua_pushinteger(L, result);
 
