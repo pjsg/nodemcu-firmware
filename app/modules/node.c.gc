@@ -512,7 +512,7 @@ static int node_bootreason (lua_State *L)
     ri->reason,
     ri->exccause, ri->epc1, ri->epc2, ri->epc3, ri->excvaddr, ri->depc
   };
-  int i, n = ((ri->reason != REASON_EXCEPTION_RST) ? 8 : 8);
+  int i, n = ((ri->reason != REASON_EXCEPTION_RST) ? 2 : 8);
   for (i = 0; i < n; ++i)
     lua_pushinteger (L, arr[i]);
   return n;
@@ -598,8 +598,8 @@ static int node_egc_setmode(lua_State* L) {
   unsigned mode  = luaL_checkinteger(L, 1);
   unsigned limit = luaL_optinteger (L, 2, 0);
 
-  luaL_argcheck(L, mode <= (EGC_ON_ALLOC_FAILURE | EGC_ON_MEM_LIMIT | EGC_ALWAYS), 1, "invalid mode");
-  luaL_argcheck(L, !(mode & EGC_ON_MEM_LIMIT) || limit>0, 1, "limit must be non-zero");
+  luaL_argcheck(L, mode <= (EGC_ON_ALLOC_FAILURE | EGC_ON_MEM_LIMIT | EGC_ALWAYS | EGC_ON_LOW_MEM ), 1, "invalid mode");
+  luaL_argcheck(L, !(mode & (EGC_ON_MEM_LIMIT | EGC_ON_LOW_MEM)) || limit>0, 1, "limit must be non-zero");
 
   legc_set_mode( L, mode, limit );
   return 0;
@@ -625,6 +625,7 @@ static const LUA_REG_TYPE node_egc_map[] = {
   { LSTRKEY( "NOT_ACTIVE" ),        LNUMVAL( EGC_NOT_ACTIVE ) },
   { LSTRKEY( "ON_ALLOC_FAILURE" ),  LNUMVAL( EGC_ON_ALLOC_FAILURE ) },
   { LSTRKEY( "ON_MEM_LIMIT" ),      LNUMVAL( EGC_ON_MEM_LIMIT ) },
+  { LSTRKEY( "ON_LOW_MEM" ),        LNUMVAL( EGC_ON_LOW_MEM ) },
   { LSTRKEY( "ALWAYS" ),            LNUMVAL( EGC_ALWAYS ) },
   { LNILKEY, LNILVAL }
 };

@@ -67,6 +67,9 @@ static void removeentry (Node *n) {
 
 
 static void reallymarkobject (global_State *g, GCObject *o) {
+  if (data_is_readonly(o)) {
+    return;
+  }
   lua_assert(iswhite(o) && !isdead(g, o));
   white2gray(o);
   switch (o->gch.tt) {
