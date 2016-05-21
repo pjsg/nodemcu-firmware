@@ -88,6 +88,13 @@ int luaO_rawequalObj (const TValue *t1, const TValue *t2) {
       return rvalue(t1) == rvalue(t2);
     case LUA_TLIGHTFUNCTION:
       return fvalue(t1) == fvalue(t2);
+    case LUA_TSTRING:
+    {
+      const TString *tt1 = rawgco2ts(gcvalue(t1));
+      const TString *tt2 = rawgco2ts(gcvalue(t2));
+
+      return tt1 == tt2 || (tt1->tsv.len == tt2->tsv.len && tt1->tsv.hash == tt2->tsv.hash && c_memcmp(getstr(tt1), getstr(tt2), tt1->tsv.len) == 0);
+    }
     default:
       lua_assert(iscollectable(t1));
       return gcvalue(t1) == gcvalue(t2);

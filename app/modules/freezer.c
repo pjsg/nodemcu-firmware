@@ -347,9 +347,10 @@ static int freezer_freeze(lua_State *L) {
 
   int result = do_freeze_closure(L, cl);
 
+  lua_pushvalue(L, 1);
   lua_pushinteger(L, result);
 
-  return 1;
+  return 2;
 }
 
 static int freezer_opts(lua_State *L) {
