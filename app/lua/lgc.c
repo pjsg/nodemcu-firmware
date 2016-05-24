@@ -37,7 +37,7 @@
 #define white2gray(x)	reset2bits((x)->gch.marked, WHITE0BIT, WHITE1BIT)
 #define black2gray(x)	resetbit((x)->gch.marked, BLACKBIT)
 
-#define stringmark(s)	reset2bits((s)->tsv.marked, WHITE0BIT, WHITE1BIT)
+#define stringmark(s)	data_is_readonly(s) || reset2bits((s)->tsv.marked, WHITE0BIT, WHITE1BIT)
 
 
 #define isfinalized(u)		testbit((u)->marked, FINALIZEDBIT)
@@ -205,11 +205,11 @@ static int traversetable (global_State *g, Table *h) {
 */
 static void traverseproto (global_State *g, Proto *f) {
   int i;
-  if (f->source && iscollectable(&f->source->tsv)) stringmark(f->source);
+  if (f->source) stringmark(f->source);
   for (i=0; i<f->sizek; i++)  /* mark literals */
     markvalue(g, &f->k[i]);
   for (i=0; i<f->sizeupvalues; i++) {  /* mark upvalue names */
-    if (f->upvalues[i] && iscollectable(&f->upvalues[i]->tsv))
+    if (f->upvalues[i])
       stringmark(f->upvalues[i]);
   }
   for (i=0; i<f->sizep; i++) {  /* mark nested protos */
@@ -217,7 +217,7 @@ static void traverseproto (global_State *g, Proto *f) {
       markobject(g, f->p[i]);
   }
   for (i=0; i<f->sizelocvars; i++) {  /* mark local-variable names */
-    if (f->locvars[i].varname && iscollectable(&f->locvars[i].varname->tsv))
+    if (f->locvars[i].varname)
       stringmark(f->locvars[i].varname);
   }
 }

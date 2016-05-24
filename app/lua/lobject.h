@@ -349,7 +349,7 @@ typedef TValuefields TValue;
 #endif // #ifndef LUA_PACK_VALUE
 
 #define data_is_readonly(ptr)     (((uint32_t) (ptr)) >= 0x40200000)
-#define iscollectable(o)	(ttype(o) >= LUA_TSTRING && !data_is_readonly(o))
+#define iscollectable(o)	(ttype(o) >= LUA_TSTRING)
 
 
 
