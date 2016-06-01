@@ -802,6 +802,7 @@ static void *l_alloc (void *ud, void *ptr, size_t osize, size_t nsize) {
   if (nptr == NULL && L != NULL && (mode & EGC_ON_ALLOC_FAILURE)) {
     luaC_fullgc(L); /* emergency full collection. */
     nptr = (void *)c_realloc(ptr, nsize); /* try allocation again */
+    c_printf("ALLOC_FAIL: %d bytes\n", nsize);
   }
   return nptr;
 }

@@ -34,6 +34,14 @@ static uint32_t flash_area_phys;
 static uint32_t opts = -1;
 #define OPT_CONSTANTS	1
 #define OPT_CONSTANT_VECTOR 2
+#define OPT_LOCVARS	4
+#define OPT_LOCVAR_VECTOR 8
+#define OPT_UPVALS	 0x10
+#define OPT_UPVAL_VECTOR 0x20
+#define OPT_SOURCE 	 0x40
+#define OPT_CODE	 0x80
+#define OPT_LINEINFO     0x100
+#define OPT_WRITE	 0x200
 
 static inline bool is_flash(void *ptr) {
   return (uint8_t *) ptr >= flash_area && (uint8_t *) ptr < flash_area + sizeof(flash_area);
@@ -109,7 +117,7 @@ static void *find_data(const void *src, size_t len) {
   // Try and flush the cache
   int offset;
 
-  for (offset = 0x2000; offset <= 0x4000; offset += 0x2000) {
+  for (offset = 0x2000; offset <= 0x6000; offset += 0x2000) {
     volatile int32_t *p;
     for (p = blockbase; p < blockend; p++) {
       p[offset];
@@ -117,13 +125,13 @@ static void *find_data(const void *src, size_t len) {
   }
 
   if (*blockbase != blen) {
-    NODE_DBG("HDR %d != %d\n", *blockbase, blen);
+    NODE_DBG("0x%x: HDR %d != %d\n", blockbase, *blockbase, blen);
   }
   if (memcmp(ptr, src, len) != 0) {
-    NODE_DBG("BLK differs\n");
+    NODE_DBG("0x%x, %d: BLK differs\n", ptr, len);
   }
   if (blockend[-1] != blen) {
-    NODE_DBG("TRL %d != %d\n", blockend[-1], blen);
+    NODE_DBG("0x%x: TRL %d != %d\n", blockend - 1, blockend[-1], blen);
   }
 
   return (void *) ptr;
@@ -178,7 +186,7 @@ static TString *freeze_tstring(lua_State *L, TString *s, size_t *freedp) {
     return s;
   }
 
-  NODE_DBG("Freezing string '%s'\n", getstr(s));
+  //NODE_DBG("Freezing string '%s'\n", getstr(s));
 
   // Make a new readonly TString object
   size_t len = sizestring(&s->tsv);
@@ -195,67 +203,83 @@ static TString *freeze_tstring(lua_State *L, TString *s, size_t *freedp) {
 
   *freedp += len;
 
+  if (!(opts & OPT_WRITE)) {
+    return s;
+  }
+
   return tstr;
 }
 
-static int do_freeze_proto(lua_State *L, Proto *f) {
+static int do_freeze_proto(lua_State *L, Proto *f, int depth) {
   int i;
 
-  if (!f || is_flash(f->code)) {
-    NODE_DBG("Early exit proto=0x%x\n", f);
+  if (!f || is_flash(f->code) || is_flash(f->source) || depth > 4) {
+    //NODE_DBG("Early exit proto=0x%x\n", f);
     return 0;
   }
 
   size_t freed = 0;
 
-  if (f->source) {
-    f->source = freeze_tstring(L, f->source, &freed);
+  if (opts & OPT_SOURCE) {
+    if (f->source) {
+      f->source = freeze_tstring(L, f->source, &freed);
+    }
   }
 
-  Instruction *newcode = (Instruction *) find_data(f->code, sizeof(f->code[0]) * f->sizecode);
-  if (newcode) {
-    luaM_freearray(L, f->code, f->sizecode, Instruction);
-    f->code = newcode;
-    freed += f->sizecode * sizeof(Instruction);
+  if (opts & OPT_CODE) {
+    Instruction *newcode = (Instruction *) find_data(f->code, sizeof(f->code[0]) * f->sizecode);
+    if (newcode && (opts & OPT_WRITE)) {
+      luaM_freearray(L, f->code, f->sizecode, Instruction);
+      f->code = newcode;
+      freed += f->sizecode * sizeof(Instruction);
+    }
   }
 
   bool all_readonly = TRUE;
   
-  for (i = 0; i < f->sizeupvalues; i++) {
-    TString *str = f->upvalues[i];
+  if (opts & OPT_UPVALS) {
+    for (i = 0; i < f->sizeupvalues; i++) {
+      TString *str = f->upvalues[i];
 
-    f->upvalues[i] = freeze_tstring(L, str, &freed);
-    if ((uint8_t *) f->upvalues[i] < flash_area) {
-      all_readonly = FALSE;
+      f->upvalues[i] = freeze_tstring(L, str, &freed);
+      if ((uint8_t *) f->upvalues[i] < flash_area) {
+	all_readonly = FALSE;
+      }
     }
-  }
 
-  if (all_readonly && f->sizeupvalues && !is_flash(f->upvalues)) {
-    TString **ro_upvalues = find_data(f->upvalues, f->sizeupvalues * sizeof(TString));
-    if (ro_upvalues) {
-      luaM_freearray(L, f->upvalues, f->sizeupvalues, TString);
-      f->upvalues = ro_upvalues;
-      freed += f->sizeupvalues * sizeof(TString);
+    if (opts & OPT_UPVAL_VECTOR) {
+      if (all_readonly && f->sizeupvalues && !is_flash(f->upvalues)) {
+	TString **ro_upvalues = find_data(f->upvalues, f->sizeupvalues * sizeof(TString));
+	if (ro_upvalues) {
+	  luaM_freearray(L, f->upvalues, f->sizeupvalues, TString);
+	  f->upvalues = ro_upvalues;
+	  freed += f->sizeupvalues * sizeof(TString);
+	}
+      }
     }
   }
 
   all_readonly = TRUE;
   
-  for (i = 0; i < f->sizelocvars; i++) {
-    TString *str = f->locvars[i].varname;
+  if (opts & OPT_LOCVARS) {
+    for (i = 0; i < f->sizelocvars; i++) {
+      TString *str = f->locvars[i].varname;
 
-    f->locvars[i].varname = freeze_tstring(L, str, &freed);
-    if ((uint8_t *) f->locvars[i].varname < flash_area) {
-      all_readonly = FALSE;
+      f->locvars[i].varname = freeze_tstring(L, str, &freed);
+      if ((uint8_t *) f->locvars[i].varname < flash_area) {
+	all_readonly = FALSE;
+      }
     }
-  }
 
-  if (all_readonly && f->sizelocvars && !is_flash(f->locvars)) {
-    LocVar *ro_locvars = find_data(f->locvars, f->sizelocvars * sizeof(LocVar));
-    if (ro_locvars) {
-      luaM_freearray(L, f->locvars, f->sizelocvars, LocVar);
-      f->locvars = ro_locvars;
-      freed += f->sizelocvars * sizeof(LocVar);
+    if (opts & OPT_LOCVAR_VECTOR) {
+      if (all_readonly && f->sizelocvars && !is_flash(f->locvars)) {
+	LocVar *ro_locvars = find_data(f->locvars, f->sizelocvars * sizeof(LocVar));
+	if (ro_locvars) {
+	  luaM_freearray(L, f->locvars, f->sizelocvars, LocVar);
+	  f->locvars = ro_locvars;
+	  freed += f->sizelocvars * sizeof(LocVar);
+	}
+      }
     }
   }
 
@@ -290,19 +314,21 @@ static int do_freeze_proto(lua_State *L, Proto *f) {
   }
 
 #ifdef LUA_OPTIMIZE_DEBUG
-  if (f->packedlineinfo && !is_flash(f->packedlineinfo)) {
-    int datalen = c_strlen(cast(char *, f->packedlineinfo))+1;
-    unsigned char *packedlineinfo = (unsigned char *) find_data(f->packedlineinfo, datalen);
-    if (packedlineinfo) {
-      freed += datalen;
-      luaM_freearray(L, f->packedlineinfo, datalen, unsigned char);
-      f->packedlineinfo = packedlineinfo;
+  if (opts & OPT_LINEINFO) {
+    if (f->packedlineinfo && !is_flash(f->packedlineinfo)) {
+      int datalen = c_strlen(cast(char *, f->packedlineinfo))+1;
+      unsigned char *packedlineinfo = (unsigned char *) find_data(f->packedlineinfo, datalen);
+      if (packedlineinfo && (opts & OPT_WRITE)) {
+	freed += datalen;
+	luaM_freearray(L, f->packedlineinfo, datalen, unsigned char);
+	f->packedlineinfo = packedlineinfo;
+      }
     }
   }
 #endif
 
   for (i = 0; i < f->sizep; i++) {
-    freed += do_freeze_proto(L, f->p[i]);
+    freed += do_freeze_proto(L, f->p[i], depth + 1);
   }
 
   return freed;
@@ -317,7 +343,7 @@ static int do_freeze_closure(lua_State *L, Closure *cl) {
   Proto *f = cl->l.p;
 
   // Now we have to freeze this block.....
-  int result = do_freeze_proto(L, f);
+  int result = do_freeze_proto(L, f, 0);
 
   if (!result) {
     return 0;
@@ -330,7 +356,6 @@ static int do_freeze_closure(lua_State *L, Closure *cl) {
     TValue *val = (*upval)->v;
 
     if (ttisfunction(val)) {
-      NODE_DBG("Upval closure\n");
       Closure *inner = clvalue(val);
 
       result += do_freeze_closure(L, inner);
