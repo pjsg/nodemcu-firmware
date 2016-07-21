@@ -81,6 +81,9 @@ extern void luaL_assertfail(const char *file, int line, const char *message);
 // #define SPIFFS_SIZE_1M_BOUNDARY
 
 // #define LUA_NUMBER_INTEGRAL
+//
+//
+#define OS_RANDOM_32 os_random
 
 #define READLINE_INTERVAL 80
 #define LUA_TASK_PRIO USER_TASK_PRIO_0

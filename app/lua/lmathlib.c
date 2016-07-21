@@ -246,6 +246,34 @@ static int math_max (lua_State *L) {
 
 #ifdef LUA_NUMBER_INTEGRAL
 
+#ifdef OS_RANDOM_32
+static int math_random (lua_State *L) {
+  int u;
+  int l;
+
+  switch (lua_gettop(L)) {  /* check number of arguments */
+    case 0: {  /* no arguments */
+      lua_pushnumber(L, 0);  /* Number between 0 and 1 - always 0 with ints */
+      return 1;
+    }
+    case 1: {  /* only upper limit */
+      l = 1;
+      u = luaL_checkint(L, 1);
+      break;
+    }
+    case 2: {  /* lower and upper limits */
+      l = luaL_checkint(L, 1);
+      u = luaL_checkint(L, 2);
+      break;
+    }
+    default: 
+      return luaL_error(L, "wrong number of arguments");
+  }
+  luaL_argcheck(L, l<=u, 2, "interval is empty");
+  lua_pushnumber(L, luaL_random_range(l, u));  /* int between `l' and `u' */
+  return 1;
+}
+#else
 static int math_random (lua_State *L) {
   lua_Number r = (lua_Number)(rand()%RAND_MAX);
 
@@ -271,13 +299,18 @@ static int math_random (lua_State *L) {
   }
   return 1;
 }
+#endif
 
 #else
 
 static int math_random (lua_State *L) {
   /* the `%' avoids the (rare) case of r==1, and is needed also because on
      some systems (SunOS!) `rand()' may return a value larger than RAND_MAX */
+#ifdef OS_RANDOM_32
+  lua_Number r = (lua_Number)OS_RANDOM_32() / ((lua_Number)(1 << 30) * 4);
+#else
   lua_Number r = (lua_Number)(rand()%RAND_MAX) / (lua_Number)RAND_MAX;
+#endif
   switch (lua_gettop(L)) {  /* check number of arguments */
     case 0: {  /* no arguments */
       lua_pushnumber(L, r);  /* Number between 0 and 1 */
@@ -305,7 +338,7 @@ static int math_random (lua_State *L) {
 
 
 static int math_randomseed (lua_State *L) {
-  srand(luaL_checkint(L, 1));
+  //srand(luaL_checkint(L, 1));
   return 0;
 }
 

@@ -167,6 +167,9 @@ LUALIB_API void (luaL_addvalue) (luaL_Buffer *B);
 LUALIB_API void (luaL_pushresult) (luaL_Buffer *B);
 
 
+LUALIB_API int luaL_random_range(int l, int u);
+
+
 /* }====================================================== */
 
 
