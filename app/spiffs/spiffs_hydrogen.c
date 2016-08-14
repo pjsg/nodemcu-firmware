@@ -212,10 +212,10 @@ spiffs_file SPIFFS_open(spiffs *fs, const char *path, spiffs_flags flags, spiffs
 
 #if SPIFFS_READ_ONLY
   // not valid flags in read only mode
-  flags &= ~SPIFFS_WRONLY | SPIFFS_CREAT | SPIFFS_TRUNC;
+  flags &= ~(SPIFFS_WRONLY | SPIFFS_CREAT | SPIFFS_TRUNC);
 #endif // SPIFFS_READ_ONLY
 
-  s32_t res = spiffs_fd_find_new(fs, &fd);
+  s32_t res = spiffs_fd_find_new(fs, &fd, path);
   SPIFFS_API_CHECK_RES_UNLOCK(fs, res);
 
   res = spiffs_object_find_object_index_header_by_name(fs, (const u8_t*)path, &pix);
@@ -285,7 +285,7 @@ spiffs_file SPIFFS_open_by_dirent(spiffs *fs, struct spiffs_dirent *e, spiffs_fl
 
   spiffs_fd *fd;
 
-  s32_t res = spiffs_fd_find_new(fs, &fd);
+  s32_t res = spiffs_fd_find_new(fs, &fd, 0);
   SPIFFS_API_CHECK_RES_UNLOCK(fs, res);
 
   res = spiffs_object_open_by_page(fs, e->pix, fd, flags, mode);
@@ -317,7 +317,7 @@ spiffs_file SPIFFS_open_by_page(spiffs *fs, spiffs_page_ix page_ix, spiffs_flags
 
   spiffs_fd *fd;
 
-  s32_t res = spiffs_fd_find_new(fs, &fd);
+  s32_t res = spiffs_fd_find_new(fs, &fd, 0);
   SPIFFS_API_CHECK_RES_UNLOCK(fs, res);
 
   if (SPIFFS_IS_LOOKUP_PAGE(fs, page_ix)) {
@@ -546,8 +546,7 @@ s32_t SPIFFS_write(spiffs *fs, spiffs_file fh, void *buf, s32_t len) {
             fd->cache_page->offset, fd->cache_page->size);
         spiffs_cache_fd_release(fs, fd->cache_page);
         SPIFFS_API_CHECK_RES_UNLOCK(fs, res);
-        res = spiffs_hydro_write(fs, fd, buf, offset, len);
-        SPIFFS_API_CHECK_RES_UNLOCK(fs, res);
+        // data written below
       }
     }
   }
@@ -625,7 +624,7 @@ s32_t SPIFFS_remove(spiffs *fs, const char *path) {
   spiffs_page_ix pix;
   s32_t res;
 
-  res = spiffs_fd_find_new(fs, &fd);
+  res = spiffs_fd_find_new(fs, &fd, 0);
   SPIFFS_API_CHECK_RES_UNLOCK(fs, res);
 
   res = spiffs_object_find_object_index_header_by_name(fs, (const u8_t*)path, &pix);
@@ -851,7 +850,7 @@ s32_t SPIFFS_rename(spiffs *fs, const char *old_path, const char *new_path) {
   }
   SPIFFS_API_CHECK_RES_UNLOCK(fs, res);
 
-  res = spiffs_fd_find_new(fs, &fd);
+  res = spiffs_fd_find_new(fs, &fd, 0);
   SPIFFS_API_CHECK_RES_UNLOCK(fs, res);
 
   res = spiffs_object_open_by_page(fs, pix_old, fd, 0, 0);
@@ -862,6 +861,11 @@ s32_t SPIFFS_rename(spiffs *fs, const char *old_path, const char *new_path) {
 
   res = spiffs_object_update_index_hdr(fs, fd, fd->obj_id, fd->objix_hdr_pix, 0, (const u8_t*)new_path,
       0, &pix_dummy);
+#if SPIFFS_TEMPORAL_FD_CACHE
+  if (res == SPIFFS_OK) {
+    spiffs_fd_temporal_cache_rehash(fs, old_path, new_path);
+  }
+#endif
 
   spiffs_fd_return(fs, fd->file_nbr);
 
@@ -913,7 +917,7 @@ static s32_t spiffs_read_dir_v(
   if (res != SPIFFS_OK) return res;
   if ((obj_id & SPIFFS_OBJ_ID_IX_FLAG) &&
       objix_hdr.p_hdr.span_ix == 0 &&
-      (objix_hdr.p_hdr.flags& (SPIFFS_PH_FLAG_DELET | SPIFFS_PH_FLAG_FINAL | SPIFFS_PH_FLAG_IXDELE)) ==
+      (objix_hdr.p_hdr.flags & (SPIFFS_PH_FLAG_DELET | SPIFFS_PH_FLAG_FINAL | SPIFFS_PH_FLAG_IXDELE)) ==
           (SPIFFS_PH_FLAG_DELET | SPIFFS_PH_FLAG_IXDELE)) {
     struct spiffs_dirent *e = (struct spiffs_dirent*)user_var_p;
     e->obj_id = obj_id;
@@ -923,7 +927,6 @@ static s32_t spiffs_read_dir_v(
     e->pix = pix;
     return SPIFFS_OK;
   }
-
   return SPIFFS_VIS_COUNTINUE;
 }
 
@@ -1102,6 +1105,138 @@ s32_t SPIFFS_set_file_callback_func(spiffs *fs, spiffs_file_callback cb_func) {
   SPIFFS_UNLOCK(fs);
   return 0;
 }
+
+#if SPIFFS_IX_MAP
+
+s32_t SPIFFS_ix_map(spiffs *fs,  spiffs_file fh, spiffs_ix_map *map,
+    u32_t offset, u32_t len, spiffs_page_ix *map_buf) {
+  s32_t res;
+  SPIFFS_API_CHECK_CFG(fs);
+  SPIFFS_API_CHECK_MOUNT(fs);
+  SPIFFS_LOCK(fs);
+
+  fh = SPIFFS_FH_UNOFFS(fs, fh);
+
+  spiffs_fd *fd;
+  res = spiffs_fd_get(fs, fh, &fd);
+  SPIFFS_API_CHECK_RES_UNLOCK(fs, res);
+
+  if (fd->ix_map) {
+    SPIFFS_API_CHECK_RES_UNLOCK(fs, SPIFFS_ERR_IX_MAP_MAPPED);
+  }
+
+  map->map_buf = map_buf;
+  map->offset = offset;
+  // nb: spix range includes last
+  map->start_spix = offset / SPIFFS_DATA_PAGE_SIZE(fs);
+  map->end_spix = (offset + len) / SPIFFS_DATA_PAGE_SIZE(fs);
+  memset(map_buf, 0, sizeof(spiffs_page_ix) * (map->end_spix - map->start_spix + 1));
+  fd->ix_map = map;
+
+  // scan for pixes
+  res = spiffs_populate_ix_map(fs, fd, 0, map->end_spix - map->start_spix + 1);
+  SPIFFS_API_CHECK_RES_UNLOCK(fs, res);
+
+  SPIFFS_UNLOCK(fs);
+  return res;
+}
+
+s32_t SPIFFS_ix_unmap(spiffs *fs,  spiffs_file fh) {
+  s32_t res;
+  SPIFFS_API_CHECK_CFG(fs);
+  SPIFFS_API_CHECK_MOUNT(fs);
+  SPIFFS_LOCK(fs);
+
+  fh = SPIFFS_FH_UNOFFS(fs, fh);
+
+  spiffs_fd *fd;
+  res = spiffs_fd_get(fs, fh, &fd);
+  SPIFFS_API_CHECK_RES_UNLOCK(fs, res);
+
+  if (fd->ix_map == 0) {
+    SPIFFS_API_CHECK_RES_UNLOCK(fs, SPIFFS_ERR_IX_MAP_UNMAPPED);
+  }
+
+  fd->ix_map = 0;
+
+  SPIFFS_UNLOCK(fs);
+  return res;
+}
+
+s32_t SPIFFS_ix_remap(spiffs *fs, spiffs_file fh, u32_t offset) {
+  s32_t res = SPIFFS_OK;
+  SPIFFS_API_CHECK_CFG(fs);
+  SPIFFS_API_CHECK_MOUNT(fs);
+  SPIFFS_LOCK(fs);
+
+  fh = SPIFFS_FH_UNOFFS(fs, fh);
+
+  spiffs_fd *fd;
+  res = spiffs_fd_get(fs, fh, &fd);
+  SPIFFS_API_CHECK_RES_UNLOCK(fs, res);
+
+  if (fd->ix_map == 0) {
+    SPIFFS_API_CHECK_RES_UNLOCK(fs, SPIFFS_ERR_IX_MAP_UNMAPPED);
+  }
+
+  spiffs_ix_map *map = fd->ix_map;
+
+  s32_t spix_diff = offset / SPIFFS_DATA_PAGE_SIZE(fs) - map->start_spix;
+  map->offset = offset;
+
+  // move existing pixes if within map offs
+  if (spix_diff != 0) {
+    // move vector
+    int i;
+    const s32_t vec_len = map->end_spix - map->start_spix + 1; // spix range includes last
+    map->start_spix += spix_diff;
+    map->end_spix += spix_diff;
+    if (spix_diff >= vec_len) {
+      // moving beyond range
+      memset(&map->map_buf, 0, vec_len * sizeof(spiffs_page_ix));
+      // populate_ix_map is inclusive
+      res = spiffs_populate_ix_map(fs, fd, 0, vec_len-1);
+      SPIFFS_API_CHECK_RES_UNLOCK(fs, res);
+    } else if (spix_diff > 0) {
+      // diff positive
+      for (i = 0; i < vec_len - spix_diff; i++) {
+        map->map_buf[i] = map->map_buf[i + spix_diff];
+      }
+      // memset is non-inclusive
+      memset(&map->map_buf[vec_len - spix_diff], 0, spix_diff * sizeof(spiffs_page_ix));
+      // populate_ix_map is inclusive
+      res = spiffs_populate_ix_map(fs, fd, vec_len - spix_diff, vec_len-1);
+      SPIFFS_API_CHECK_RES_UNLOCK(fs, res);
+    } else {
+      // diff negative
+      for (i = vec_len - 1; i >= -spix_diff; i--) {
+        map->map_buf[i] = map->map_buf[i + spix_diff];
+      }
+      // memset is non-inclusive
+      memset(&map->map_buf[0], 0, -spix_diff * sizeof(spiffs_page_ix));
+      // populate_ix_map is inclusive
+      res = spiffs_populate_ix_map(fs, fd, 0, -spix_diff - 1);
+      SPIFFS_API_CHECK_RES_UNLOCK(fs, res);
+    }
+
+  }
+
+  SPIFFS_UNLOCK(fs);
+  return res;
+}
+
+s32_t SPIFFS_bytes_to_ix_map_entries(spiffs *fs, u32_t bytes) {
+  SPIFFS_API_CHECK_CFG(fs);
+  // always add one extra page, the offset might change to the middle of a page
+  return (bytes + SPIFFS_DATA_PAGE_SIZE(fs) ) / SPIFFS_DATA_PAGE_SIZE(fs);
+}
+
+s32_t SPIFFS_ix_map_entries_to_bytes(spiffs *fs, u32_t map_page_ix_entries) {
+  SPIFFS_API_CHECK_CFG(fs);
+  return map_page_ix_entries * SPIFFS_DATA_PAGE_SIZE(fs);
+}
+
+#endif // SPIFFS_IX_MAP
 
 #if SPIFFS_TEST_VISUALISATION
 s32_t SPIFFS_vis(spiffs *fs) {
