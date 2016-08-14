@@ -16,18 +16,22 @@ static u8_t spiffs_cache[(LOG_PAGE_SIZE+32)*2];
 #endif
 
 static s32_t my_spiffs_read(u32_t addr, u32_t size, u8_t *dst) {
-  platform_flash_read(dst, addr, size);
+  if (platform_flash_read(dst, addr, size) != size) {
+    return SPIFFS_ERR_INTERNAL;
+  }
   return SPIFFS_OK;
 }
 
 static s32_t my_spiffs_write(u32_t addr, u32_t size, u8_t *src) {
-  platform_flash_write(src, addr, size);
+  if (platform_flash_write(src, addr, size) != size) {
+    return SPIFFS_ERR_INTERNAL;
+  }
   return SPIFFS_OK;
 }
 
 static s32_t my_spiffs_erase(u32_t addr, u32_t size) {
   u32_t sect_first = platform_flash_get_sector_of_address(addr);
-  u32_t sect_last = sect_first;
+  u32_t sect_last = platform_flash_get_sector_of_address(addr + size - 1);
   while( sect_first <= sect_last )
     if( platform_flash_erase_sector( sect_first ++ ) == PLATFORM_ERR )
       return SPIFFS_ERR_INTERNAL;
