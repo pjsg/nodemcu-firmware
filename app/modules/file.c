@@ -182,7 +182,7 @@ static int file_fsinfo( lua_State* L )
   {
     return luaL_error(L, "file system error");
   }
-  int free_space = total - used - fs.cfg.log_block_size;
+  int free_space = total - used - 2 * fs.cfg.log_block_size;
   if (free_space < 0) {
     free_space = 0;
   }
