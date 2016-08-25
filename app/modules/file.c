@@ -170,6 +170,45 @@ static int file_rename( lua_State* L )
   return 1;
 }
 
+// This has to be global to allow it to be passed between the callback and mainline code
+static int check_errcount;
+static lua_State *check_L;
+
+static void file_check_cb(spiffs_check_type type, spiffs_check_report report,
+    u32_t arg1, u32_t arg2) {
+  system_soft_wdt_feed();
+  if (report != SPIFFS_CHECK_PROGRESS) {
+    check_errcount++;
+    if (check_L) {
+      lua_pushvalue(check_L, 1);  // copy argument (func) to the top of stack
+      lua_pushinteger(check_L, type); 
+      lua_pushinteger(check_L, report); 
+      lua_pushinteger(check_L, arg1); 
+      lua_pushinteger(check_L, arg2); 
+      lua_call(check_L, 4, 0);
+    }
+  }
+}
+
+
+// Lua: fscheck(function(a,b,c,d))
+static int file_fscheck( lua_State* L )
+{
+  u32_t total, used;
+  check_errcount = 0;
+  if (lua_gettop(L) > 0) {
+    if (lua_type(L, 1) == LUA_TFUNCTION || lua_type(L, 1) == LUA_TLIGHTFUNCTION) {
+      check_L = L;
+    }
+  }
+  fs.check_cb_f = file_check_cb;
+  SPIFFS_check(&fs);
+  fs.check_cb_f = NULL;
+  check_L = NULL;
+  lua_pushinteger(L, check_errcount);
+  return 1;
+}
+
 // Lua: fsinfo()
 static int file_fsinfo( lua_State* L )
 {
@@ -182,11 +221,7 @@ static int file_fsinfo( lua_State* L )
   {
     return luaL_error(L, "file system error");
   }
-  int free_space = total - used - 2 * fs.cfg.log_block_size;
-  if (free_space < 0) {
-    free_space = 0;
-  }
-  lua_pushinteger(L, free_space);
+  lua_pushinteger(L, total - used);
   lua_pushinteger(L, used);
   lua_pushinteger(L, total);
   return 3;
@@ -324,6 +359,7 @@ static const LUA_REG_TYPE file_map[] = {
   { LSTRKEY( "fsinfo" ),    LFUNCVAL( file_fsinfo ) },
   { LSTRKEY( "fscfg" ),     LFUNCVAL( file_fscfg ) },
   { LSTRKEY( "exists" ),    LFUNCVAL( file_exists ) },  
+  { LSTRKEY( "fscheck" ),   LFUNCVAL( file_fscheck ) },  
 #endif
   { LNILKEY, LNILVAL }
 };

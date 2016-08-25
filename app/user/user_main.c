@@ -107,6 +107,8 @@ void nodemcu_init(void)
             NODE_ERR( "It is advised to re-flash the NodeMCU image.\n" );
         }
         // Note that fs_format leaves the file system mounted
+    } else {
+        fs_check();
     }
     // test_spiffs();
 #endif

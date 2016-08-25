@@ -41,6 +41,7 @@ static s32_t my_spiffs_erase(u32_t addr, u32_t size) {
 void myspiffs_check_callback(spiffs_check_type type, spiffs_check_report report, u32_t arg1, u32_t arg2){
   // if(SPIFFS_CHECK_PROGRESS == report) return;
   // NODE_ERR("type: %d, report: %d, arg1: %d, arg2: %d\n", type, report, arg1, arg2);
+  system_soft_wdt_feed();
 }
 
 /*******************
@@ -177,8 +178,7 @@ static bool myspiffs_mount_internal(bool force_mount) {
 #else
     0, 0,
 #endif
-    // myspiffs_check_callback);
-    0);
+    myspiffs_check_callback);
   NODE_DBG("mount res: %d, %d\n", res, fs.err_code);
   return res == SPIFFS_OK;
 }
@@ -211,9 +211,10 @@ int myspiffs_format( void )
 int myspiffs_check( void )
 {
   // ets_wdt_disable();
-  // int res = (int)SPIFFS_check(&fs);
+  system_soft_wdt_feed ();
+  int res = (int)SPIFFS_check(&fs);
   // ets_wdt_enable();
-  // return res;
+  return res;
 }
 
 int myspiffs_open(const char *name, int flags){
