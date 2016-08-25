@@ -122,6 +122,25 @@ none
 print(string.format("0x%x", file.fscfg()))
 ```
 
+## file.fscheck ()
+
+Runs the file system check and fixes an errors that are found. If the function is provided as an argument, then it is
+invoked on errors and any fixes made. It returns the total number of actions.
+
+#### Syntax
+`file.fscheck([function(type, report, arg1, arg2)])`
+
+#### Parameters
+An optional callback function that is invoked for all discovered errors or fixes. See the SPIFFS documentation for a description of the arguments.
+
+#### Returns
+- `errors` (number)
+
+#### Example
+```lua
+file.fscheck(function(type, report, arg1, arg2) print(type, report, arg1, arg2) end)
+```
+
 ## file.fsinfo()
 
 Return size information for the file system, in bytes.
