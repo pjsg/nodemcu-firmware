@@ -9,11 +9,13 @@ spiffs fs;
 #define LOG_BLOCK_SIZE_SMALL_FS	(INTERNAL_FLASH_SECTOR_SIZE)
 #define MIN_BLOCKS_FS		4
   
-static u8_t spiffs_work_buf[LOG_PAGE_SIZE*2];
-static u8_t spiffs_fds[32*4];
+static u32_t spiffs_work_buf[LOG_PAGE_SIZE*2/sizeof(u32_t)];
+static u32_t spiffs_fds[32];
 #if SPIFFS_CACHE
-static u8_t spiffs_cache[(LOG_PAGE_SIZE+32)*2];
+static u32_t spiffs_cache[(LOG_PAGE_SIZE+32)*2/sizeof(u32_t)];
 #endif
+
+static u8_t spiffs_check_error;
 
 static s32_t my_spiffs_read(u32_t addr, u32_t size, u8_t *dst) {
   if (platform_flash_read(dst, addr, size) != size) {
@@ -42,6 +44,10 @@ void myspiffs_check_callback(spiffs_check_type type, spiffs_check_report report,
   // if(SPIFFS_CHECK_PROGRESS == report) return;
   // NODE_ERR("type: %d, report: %d, arg1: %d, arg2: %d\n", type, report, arg1, arg2);
   system_soft_wdt_feed();
+
+  if (SPIFFS_CHECK_ERROR == report) {
+    spiffs_check_error = 1;
+  }
 }
 
 /*******************
@@ -86,6 +92,7 @@ static bool myspiffs_set_cfg(spiffs_config *cfg, int align, int offset, bool for
 
   if (!myspiffs_set_location(cfg, align, offset, LOG_BLOCK_SIZE)) {
     if (!myspiffs_set_location(cfg, align, offset, LOG_BLOCK_SIZE_SMALL_FS)) {
+      NODE_DBG("fs.start:%x,max:%x not possible\n",cfg->phys_addr,cfg->phys_size);
       return FALSE;
     }
   }
@@ -104,6 +111,7 @@ static bool myspiffs_set_cfg(spiffs_config *cfg, int align, int offset, bool for
     cfg->phys_size = size;
   }
   if (size > 0) {
+    NODE_DBG("probed.size:%x\n",size);
     return TRUE;
   }
   return FALSE;
@@ -169,11 +177,11 @@ static bool myspiffs_mount_internal(bool force_mount) {
 
   int res = SPIFFS_mount(&fs,
     &cfg,
-    spiffs_work_buf,
-    spiffs_fds,
+    (u8_t*)spiffs_work_buf,
+    (u8_t*)spiffs_fds,
     sizeof(spiffs_fds),
 #if SPIFFS_CACHE
-    spiffs_cache,
+    (u8_t*)spiffs_cache,
     sizeof(spiffs_cache),
 #else
     0, 0,
@@ -208,13 +216,15 @@ int myspiffs_format( void )
   return myspiffs_mount();
 }
 
+// 0 is good return, 1 is bad
 int myspiffs_check( void )
 {
   // ets_wdt_disable();
   system_soft_wdt_feed ();
+  spiffs_check_error = 0;
   int res = (int)SPIFFS_check(&fs);
   // ets_wdt_enable();
-  return res;
+  return spiffs_check_error;
 }
 
 int myspiffs_open(const char *name, int flags){

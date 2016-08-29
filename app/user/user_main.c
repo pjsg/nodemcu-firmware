@@ -108,7 +108,7 @@ void nodemcu_init(void)
         }
         // Note that fs_format leaves the file system mounted
     } else {
-        fs_check();
+        //fs_check();
     }
     // test_spiffs();
 #endif
