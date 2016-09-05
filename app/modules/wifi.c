@@ -372,6 +372,26 @@ static int wifi_sleep(lua_State* L)
   return 2;
 }
 
+//wifi.nullmodesleep()
+static int wifi_null_mode_auto_sleep(lua_State* L)
+{
+  if (!lua_isnone(L, 1))
+  {
+    bool auto_sleep_setting=lua_toboolean(L, 1);
+    if (auto_sleep_setting!=(bool) get_fpm_auto_sleep_flag())
+    {
+      wifi_fpm_auto_sleep_set_in_null_mode((uint8)auto_sleep_setting);
+      //if esp is already in NULL_MODE, auto sleep setting won't take effect until next wifi_set_opmode(NULL_MODE) call.
+      if(wifi_get_opmode()==NULL_MODE)
+      {
+        wifi_set_opmode_current(NULL_MODE);
+      }
+    }
+  }
+  lua_pushboolean(L, (bool) get_fpm_auto_sleep_flag());
+  return 1;
+}
+
 // Lua: mac = wifi.xx.getmac()
 static int wifi_getmac( lua_State* L, uint8_t mode )
 {
@@ -1268,6 +1288,7 @@ static const LUA_REG_TYPE wifi_map[] =  {
   { LSTRKEY( "setphymode" ),     LFUNCVAL( wifi_setphymode ) },
   { LSTRKEY( "getphymode" ),     LFUNCVAL( wifi_getphymode ) },
   { LSTRKEY( "sleep" ),          LFUNCVAL( wifi_sleep ) },
+  { LSTRKEY( "nullmodesleep" ),  LFUNCVAL( wifi_null_mode_auto_sleep ) },
 #ifdef WIFI_SMART_ENABLE 
   { LSTRKEY( "startsmart" ),     LFUNCVAL( wifi_start_smart ) },
   { LSTRKEY( "stopsmart" ),      LFUNCVAL( wifi_exit_smart ) },
@@ -1309,8 +1330,10 @@ static const LUA_REG_TYPE wifi_map[] =  {
   { LNILKEY, LNILVAL }
 };
 
-static void wifi_change_default_host_name(task_param_t param, uint8 priority)
+void wifi_change_default_host_name(void)
 {
+  uint8 opmode_temp=wifi_get_opmode();
+  wifi_set_opmode_current(STATION_MODE);
 #ifndef WIFI_STA_HOSTNAME
   char temp[32];
   uint8_t mac[6];
@@ -1318,7 +1341,7 @@ static void wifi_change_default_host_name(task_param_t param, uint8 priority)
   c_sprintf(temp, "NODE-%X%X%X", (mac)[3], (mac)[4], (mac)[5]);
   wifi_sta_sethostname((const char*)temp, strlen(temp));
 
- #elif defined(WIFI_STA_HOSTNAME) && !defined(WIFI_STA_HOSTNAME_APPEND_MAC)
+#elif defined(WIFI_STA_HOSTNAME) && !defined(WIFI_STA_HOSTNAME_APPEND_MAC)
   if(!wifi_sta_sethostname(WIFI_STA_HOSTNAME, strlen(WIFI_STA_HOSTNAME)))
   {
     char temp[32];
@@ -1335,16 +1358,24 @@ static void wifi_change_default_host_name(task_param_t param, uint8 priority)
   c_sprintf(temp, "%s%X%X%X", WIFI_STA_HOSTNAME, (mac)[3], (mac)[4], (mac)[5]);
   if(!wifi_sta_sethostname(temp, strlen(temp)))
   {
-	c_sprintf(temp, "NODE-%X%X%X", (mac)[3], (mac)[4], (mac)[5]);
+    c_sprintf(temp, "NODE-%X%X%X", (mac)[3], (mac)[4], (mac)[5]);
     wifi_sta_sethostname((const char*)temp, strlen(temp));
   }
 #endif
-
+  if(opmode_temp!=wifi_get_opmode())
+  {
+    wifi_set_opmode_current(opmode_temp);
+  }
 }
 
 int luaopen_wifi( lua_State *L )
 {
-  task_post_low(task_get_id(wifi_change_default_host_name), FALSE);
+  wifi_fpm_auto_sleep_set_in_null_mode(1);
+  //if esp is already in NULL_MODE, auto sleep setting won't take effect until next wifi_set_opmode(NULL_MODE) call.
+  if(wifi_get_opmode()==NULL_MODE)
+  {
+    wifi_set_opmode_current(NULL_MODE);
+  }
 #if defined(WIFI_SDK_EVENT_MONITOR_ENABLE)
   wifi_eventmon_init();
 #endif

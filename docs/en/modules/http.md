@@ -5,19 +5,19 @@
 
 Basic HTTP *client* module that provides an interface to do GET/POST/PUT/DELETE over HTTP(S), as well as customized requests. Due to the memory constraints on ESP8266, the supported page/body size is limited by available memory. Attempting to receive pages larger than this will fail. If larger page/body sizes are necessary, consider using [`net.createConnection()`](net.md#netcreateconnection) and stream in the data.
 
-!!! note "Note:"
+!!! attention
 
-    It is **not** possible to execute concurrent HTTP requests using this module. Starting a new request before the previous has completed will result in undefined behavior.
+    It is **not** possible to execute concurrent HTTP requests using this module. Starting a new request before the previous has completed will result in undefined behavior. Use [`node.task.post()`](https://nodemcu.readthedocs.io/en/master/en/modules/node/#nodetaskpost) in the callbacks of your calls to start subsequent calls if you want to chain them (see [#1258](https://github.com/nodemcu/nodemcu-firmware/issues/1258)).
 
 Each request method takes a callback which is invoked when the response has been received from the server. The first argument is the status code, which is either a regular HTTP status code, or -1 to denote a DNS, connection or out-of-memory failure, or a timeout (currently at 10 seconds).
 
-For each operation it is also possible to include custom headers. Note that following headers *can not* be overridden however:
+For each operation it is possible to provide custom HTTP headers or override standard headers. By default the `Host` header is deduced from the URL and `User-Agent` is `ESP8266`. Note, however, that the `Connection` header *can not* be overridden! It is always set to `close`.
 
-- Host
-- Connection
-- User-Agent
+HTTP redirects (HTTP status 300-308) are followed automatically up to a limit of 20 to avoid the dreaded redirect loops.
 
-The `Host` header is taken from the URL itself, the `Connection` is always set to `close`, and the `User-Agent` is `ESP8266`.
+**SSL/TLS support**
+
+Take note of constraints documented in the [net module](net.md). 
 
 ## http.delete()
 

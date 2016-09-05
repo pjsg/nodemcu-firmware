@@ -227,7 +227,7 @@ static ip_addr_t              dns_servers[DNS_MAX_SERVERS];
 /** Contiguous buffer for processing responses */
 //static u8_t                   dns_payload_buffer[LWIP_MEM_ALIGN_BUFFER(DNS_MSG_SIZE)];
 static u8_t*                  dns_payload;
-static u8_t					  dns_random;
+static u16_t					  dns_random;
 /**
  * Initialize the resolver: set up the UDP pcb and configure the default server
  * (DNS_SERVER_ADDRESS).
@@ -254,8 +254,16 @@ dns_init()
       LWIP_ASSERT("For implicit initialization to work, DNS_STATE_UNUSED needs to be 0",
         DNS_STATE_UNUSED == 0);
 
-      /* initialize DNS client */
-      udp_bind(dns_pcb, IP_ADDR_ANY, 0);
+      /* PR #1324 */
+      /* initialize DNS client, try to get RFC 5452 random source port */
+      u16_t port = UDP_LOCAL_PORT_RANGE_START + (os_random() % (UDP_LOCAL_PORT_RANGE_END - UDP_LOCAL_PORT_RANGE_START));
+      for(;;) {
+        if(udp_bind(dns_pcb, IP_ADDR_ANY, port) == ERR_OK)
+          break;
+        LWIP_ASSERT("Unable to get a PCB for DNS", port != 0);
+        port=0; // try again with random source
+      }
+      /* END PR #1324 */
       udp_recv(dns_pcb, dns_recv, NULL);
 
       /* initialize default DNS primary server */
@@ -570,7 +578,7 @@ dns_send(u8_t numdns, const char* name, u8_t id)
   char *query, *nptr;
   const char *pHostname;
   u8_t n;
-  dns_random = os_random()%250;
+  dns_random = (u16_t)os_random();
   LWIP_DEBUGF(DNS_DEBUG, ("dns_send: dns_servers[%"U16_F"] \"%s\": request\n",
               (u16_t)(numdns), name));
   LWIP_ASSERT("dns server out of array", numdns < DNS_MAX_SERVERS);

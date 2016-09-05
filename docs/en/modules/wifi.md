@@ -45,7 +45,7 @@ The WiFi mode, as one of the `wifi.STATION`, `wifi.SOFTAP`, `wifi.STATIONAP` or 
 Gets WiFi physical mode.
 
 #### Syntax
-`wifi.getpymode()`
+`wifi.getphymode()`
 
 #### Parameters
 none
@@ -128,6 +128,21 @@ physical mode after setup
 #### See also
 [`wifi.getphymode()`](#wifigetphymode)
 
+## wifi.nullmodesleep()
+
+Configures whether or not WiFi automatically goes to sleep in NULL_MODE. Enabled by default. 
+
+#### Syntax
+`wifi.nullmodesleep(enable)`
+
+#### Parameters
+- `enable` 
+  - true: Enable WiFi auto sleep in NULL_MODE. (Default setting)
+  - false: Disable WiFi auto sleep in NULL_MODE. 
+
+#### Returns
+Current/new NULL_MODE sleep setting.
+
 ## wifi.sleeptype()
 
 Configures the WiFi modem sleep type.
@@ -157,7 +172,7 @@ Intended for use with SmartConfig apps, such as Espressif's [Android & iOS app](
 
 Only usable in `wifi.STATION` mode.
 
-!!! note "Note:"
+!!! important
 
     SmartConfig is disabled by default and can be enabled by setting `WIFI_SMART_ENABLE` in [`user_config.h`](https://github.com/nodemcu/nodemcu-firmware/blob/dev/app/include/user_config.h#L96) before you build the firmware.
 
@@ -626,7 +641,7 @@ Gets MAC address in station mode.
 none
 
 #### Returns
-MAC address as string e.g. "18-33-44-FE-55-BB"
+MAC address as string e.g. "18:fe:34:a2:d7:34"
 
 #### See also
 [`wifi.sta.getip()`](#wifistagetip)
@@ -751,7 +766,7 @@ NOTE: SoftAP Configuration will be retained until changed even if device is turn
 #### Parameters
 - `ssid` SSID chars 1-32
 - `pwd` password chars 8-64
-- `auth` authentication  one of AUTH\_OPEN, AUTH\_WPA\_PSK, AUTH\_WPA2\_PSK, AUTH\_WPA\_WPA2\_PSK, default = AUTH\_OPEN
+- `auth` authentication method, one of `wifi.OPEN` (default), `wifi.WPA_PSK`, `wifi.WPA2_PSK`, `wifi.WPA_WPA2_PSK`
 - `channel` channel number 1-14 default = 6
 - `hidden` 0 = not hidden, 1 = hidden, default 0
 - `max` maximal number of connections 1-4 default=4
@@ -1036,7 +1051,7 @@ T: Table returned by event.
 	- `SSID`: SSID of access point.  
 	- `BSSID`: BSSID of access point.  
 	- `channel`: The channel the access point is on.  
-- `wifi.eventmon.STA_DISCONNECT`: Station was disconnected from access point.  
+- `wifi.eventmon.STA_DISCONNECTED`: Station was disconnected from access point.  
 	- `SSID`: SSID of access point.  
 	- `BSSID`: BSSID of access point.  
 	- `REASON`: See [wifi.eventmon.reason](#wifieventmonreason) below.  
