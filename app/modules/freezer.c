@@ -31,7 +31,6 @@
 static volatile uint8_t flash_area[65536] __attribute__ ((aligned(4096), section(".irom0.text")));
 static uint32_t flash_area_phys;
 
-static uint32_t opts = -1;
 #define OPT_CONSTANTS	1
 #define OPT_CONSTANT_VECTOR 2
 #define OPT_LOCVARS	4
@@ -42,6 +41,10 @@ static uint32_t opts = -1;
 #define OPT_CODE	 0x80
 #define OPT_LINEINFO     0x100
 #define OPT_WRITE	 0x200
+#define OPT_DEBUG        0x10000
+static uint32_t opts = (-1) & ~OPT_DEBUG;
+
+#define NODE_DBG_OPT(...) if (opts & OPT_DEBUG) { NODE_DBG(__VA_ARGS__); }
 
 static inline bool is_flash(void *ptr) {
   return (uint8_t *) ptr >= flash_area && (uint8_t *) ptr < flash_area + sizeof(flash_area);
@@ -66,7 +69,14 @@ static void *find_data(const void *src, size_t len) {
   }
   size_t blen = (len + 7) & ~7;
 
-  //NODE_DBG("Looking for %d bytes (blocklen %d)\n", len, blen);
+  if (opts & OPT_DEBUG) {
+    NODE_DBG("Looking for %d bytes (blocklen %d): ", len, blen);
+    int i;
+    for (i = 0; i < len && i < 24; i++) {
+      NODE_DBG("%02x ", ((unsigned char *) src)[i]);
+    }
+    NODE_DBG("\n");
+  }
 
   int32_t *ptr = ((int32_t *) flash_area) + 1;
 
@@ -74,7 +84,8 @@ static void *find_data(const void *src, size_t len) {
     int blocklen = *ptr;
     if (blocklen == blen) {
       if (memcmp(ptr + 1, src, len) == 0) {
-	//NODE_DBG(".. found at 0x%08x\n", ptr);
+
+	NODE_DBG_OPT(".. found at 0x%08x\n", ptr);
 	return (void *) (ptr + 1);
       }
     }
@@ -103,7 +114,7 @@ static void *find_data(const void *src, size_t len) {
     return NULL;
   }
 
-  //NODE_DBG("Adding block at 0x%x\n", ptr);
+  NODE_DBG_OPT("Adding block at 0x%x\n", ptr);
 
   int32_t *blockbase = ptr;
 
@@ -186,7 +197,7 @@ static TString *freeze_tstring(lua_State *L, TString *s, size_t *freedp) {
     return s;
   }
 
-  //NODE_DBG("Freezing string '%s'\n", getstr(s));
+  NODE_DBG_OPT("Freezing string '%s'\n", getstr(s));
 
   // Make a new readonly TString object
   size_t len = sizestring(&s->tsv);
@@ -194,6 +205,7 @@ static TString *freeze_tstring(lua_State *L, TString *s, size_t *freedp) {
   memcpy(tstr, s, len);
   tstr->tsv.next = NULL;
   tstr->tsv.marked &= READONLYMASK;
+  ((unsigned short *) tstr)[3] = -1;  // Zap unused field
 
   tstr = find_data(tstr, len);
 
@@ -214,7 +226,7 @@ static int do_freeze_proto(lua_State *L, Proto *f, int depth) {
   int i;
 
   if (!f || is_flash(f->code) || is_flash(f->source) || depth > 4) {
-    //NODE_DBG("Early exit proto=0x%x\n", f);
+    NODE_DBG_OPT("Early exit proto=0x%x\n", f);
     return 0;
   }
 
@@ -296,7 +308,7 @@ static int do_freeze_proto(lua_State *L, Proto *f, int depth) {
 	} else {
 	  all_readonly = FALSE;
 	}
-      } else if (!iscollectable(val)) {
+      } else if (iscollectable(val)) {
 	all_readonly = FALSE;
       }
     }
