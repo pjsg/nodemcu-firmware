@@ -307,7 +307,8 @@ int luaV_equalval (lua_State *L, const TValue *t1, const TValue *t2) {
       tm = get_compTM(L, hvalue(t1)->metatable, hvalue(t2)->metatable, TM_EQ);
       break;  /* will try TM */
     }
-    default: return gcvalue(t1) == gcvalue(t2);
+    default: //return gcvalue(t1) == gcvalue(t2);
+      return luaO_rawequalObj(t1, t2);
   }
   if (tm == NULL) return 0;  /* no TM? */
   callTMres(L, L->top, tm, t1, t2);  /* call TM */

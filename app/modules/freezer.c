@@ -379,7 +379,7 @@ static int do_freeze_closure(lua_State *L, Closure *cl) {
 
 // takes a function and returns the number of bytes of memory saved
 static int freezer_freeze(lua_State *L) {
-  if(!lua_isfunction(L, 1)) luaL_argerror(L, 1, "must be a Lua Function");
+  if (!lua_isfunction(L, 1)) luaL_argerror(L, 1, "must be a Lua Function");
   Closure *cl = (Closure *) lua_topointer(L, 1);
 
   int result = do_freeze_closure(L, cl);
