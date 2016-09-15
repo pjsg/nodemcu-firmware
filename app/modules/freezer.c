@@ -46,6 +46,62 @@ static uint32_t opts = (-1) & ~OPT_DEBUG;
 
 #define NODE_DBG_OPT(...) if (opts & OPT_DEBUG) { NODE_DBG(__VA_ARGS__); }
 
+typedef struct _pending_item {
+  void *item;
+  struct _pending_item *next;
+} PENDING_ITEM;
+
+typedef struct {
+  struct _pending_item *current;	// the last element got with _get
+  struct _pending_item *head;
+} PENDING_LIST;
+
+// this eliminates duplicates
+static void pending_push(PENDING_LIST *list, void *item) {
+  PENDING_ITEM **pp;
+
+  for (pp = &(list->head); *pp; pp = &((*pp)->next)) {
+    if ((*pp)->item == item) {
+      return;
+    }
+  }
+
+  *pp = (PENDING_ITEM *) c_malloc(sizeof(PENDING_ITEM));
+  if (!*pp) {
+    return;
+  }
+  (*pp)->item = item;
+  (*pp)->next = NULL;
+}
+
+static void* pending_get(PENDING_LIST *list) {
+  if (list->current == NULL) {
+    list->current = list->head;
+  } else {
+    if (!list->current->next) {
+      return NULL;
+    }
+    list->current = list->current->next;
+  }
+
+  if (list->current) {
+    return list->current->item;
+  }
+
+  return NULL;
+}
+
+static void pending_free(PENDING_LIST *list) {
+  PENDING_ITEM *ptr = list->head;
+  list->current = NULL;
+
+  while (ptr) {
+    PENDING_ITEM *next = ptr->next;
+    c_free(ptr);
+    ptr = next;
+  }
+}
+
 static inline bool is_flash(void *ptr) {
   return (uint8_t *) ptr >= flash_area && (uint8_t *) ptr < flash_area + sizeof(flash_area);
 }
@@ -222,157 +278,172 @@ static TString *freeze_tstring(lua_State *L, TString *s, size_t *freedp) {
   return tstr;
 }
 
-static int do_freeze_proto(lua_State *L, Proto *f, int depth) {
+static int do_freeze_proto(lua_State *L, Proto *f) {
   int i;
 
-  if (!f || is_flash(f->code) || is_flash(f->source) || depth > 4) {
-    NODE_DBG_OPT("Early exit proto=0x%x\n", f);
-    return 0;
-  }
+  PENDING_LIST protos;
+  memset(&protos, 0, sizeof(protos));
+
+  pending_push(&protos, f);
 
   size_t freed = 0;
 
-  if (opts & OPT_SOURCE) {
-    if (f->source) {
-      f->source = freeze_tstring(L, f->source, &freed);
+  while (f = (Proto *) pending_get(&protos)) {
+    if (!f || is_flash(f->code) || is_flash(f->source)) {
+      NODE_DBG_OPT("Early exit proto=0x%x\n", f);
+      continue;
     }
-  }
 
-  if (opts & OPT_CODE) {
-    Instruction *newcode = (Instruction *) find_data(f->code, sizeof(f->code[0]) * f->sizecode);
-    if (newcode && (opts & OPT_WRITE)) {
-      luaM_freearray(L, f->code, f->sizecode, Instruction);
-      f->code = newcode;
-      freed += f->sizecode * sizeof(Instruction);
-    }
-  }
-
-  bool all_readonly = TRUE;
-  
-  if (opts & OPT_UPVALS) {
-    for (i = 0; i < f->sizeupvalues; i++) {
-      TString *str = f->upvalues[i];
-
-      f->upvalues[i] = freeze_tstring(L, str, &freed);
-      if ((uint8_t *) f->upvalues[i] < flash_area) {
-	all_readonly = FALSE;
+    if (opts & OPT_SOURCE) {
+      if (f->source) {
+	f->source = freeze_tstring(L, f->source, &freed);
       }
     }
 
-    if (opts & OPT_UPVAL_VECTOR) {
-      if (all_readonly && f->sizeupvalues && !is_flash(f->upvalues)) {
-	TString **ro_upvalues = find_data(f->upvalues, f->sizeupvalues * sizeof(TString));
-	if (ro_upvalues) {
-	  luaM_freearray(L, f->upvalues, f->sizeupvalues, TString);
-	  f->upvalues = ro_upvalues;
-	  freed += f->sizeupvalues * sizeof(TString);
-	}
-      }
-    }
-  }
-
-  all_readonly = TRUE;
-  
-  if (opts & OPT_LOCVARS) {
-    for (i = 0; i < f->sizelocvars; i++) {
-      TString *str = f->locvars[i].varname;
-
-      f->locvars[i].varname = freeze_tstring(L, str, &freed);
-      if ((uint8_t *) f->locvars[i].varname < flash_area) {
-	all_readonly = FALSE;
+    if (opts & OPT_CODE) {
+      Instruction *newcode = (Instruction *) find_data(f->code, sizeof(f->code[0]) * f->sizecode);
+      if (newcode && (opts & OPT_WRITE)) {
+	luaM_freearray(L, f->code, f->sizecode, Instruction);
+	f->code = newcode;
+	freed += f->sizecode * sizeof(Instruction);
       }
     }
 
-    if (opts & OPT_LOCVAR_VECTOR) {
-      if (all_readonly && f->sizelocvars && !is_flash(f->locvars)) {
-	LocVar *ro_locvars = find_data(f->locvars, f->sizelocvars * sizeof(LocVar));
-	if (ro_locvars) {
-	  luaM_freearray(L, f->locvars, f->sizelocvars, LocVar);
-	  f->locvars = ro_locvars;
-	  freed += f->sizelocvars * sizeof(LocVar);
-	}
-      }
-    }
-  }
-
-  if (opts & OPT_CONSTANTS) {
-    all_readonly = TRUE;
+    bool all_readonly = TRUE;
     
-    for (i = 0; i < f->sizek; i++) {
-      TValue *val = &f->k[i];
+    if (opts & OPT_UPVALS) {
+      for (i = 0; i < f->sizeupvalues; i++) {
+	TString *str = f->upvalues[i];
 
-      if (ttisstring(val)) {
-	TString *frozen = freeze_tstring(L, rawtsvalue(val), &freed);
-	if ((uint8_t *) frozen > flash_area) {
-	  setsvalue(L, val, frozen);
-	} else {
+	f->upvalues[i] = freeze_tstring(L, str, &freed);
+	if ((uint8_t *) f->upvalues[i] < flash_area) {
 	  all_readonly = FALSE;
 	}
-      } else if (iscollectable(val)) {
-	all_readonly = FALSE;
       }
-    }
 
-    if (opts & OPT_CONSTANT_VECTOR) {
-      if (all_readonly && f->sizek && !is_flash(f->k)) {
-	TValue *ro_k = find_data(f->k, f->sizek * sizeof(TValue));
-	if (ro_k) {
-	  luaM_freearray(L, f->k, f->sizek, TValue);
-	  f->k = ro_k;
-	  freed += f->sizek * sizeof(TValue);
+      if (opts & OPT_UPVAL_VECTOR) {
+	if (all_readonly && f->sizeupvalues && !is_flash(f->upvalues)) {
+	  TString **ro_upvalues = find_data(f->upvalues, f->sizeupvalues * sizeof(TString));
+	  if (ro_upvalues) {
+	    luaM_freearray(L, f->upvalues, f->sizeupvalues, TString);
+	    f->upvalues = ro_upvalues;
+	    freed += f->sizeupvalues * sizeof(TString);
+	  }
 	}
       }
     }
-  }
 
-#ifdef LUA_OPTIMIZE_DEBUG
-  if (opts & OPT_LINEINFO) {
-    if (f->packedlineinfo && !is_flash(f->packedlineinfo)) {
-      int datalen = c_strlen(cast(char *, f->packedlineinfo))+1;
-      unsigned char *packedlineinfo = (unsigned char *) find_data(f->packedlineinfo, datalen);
-      if (packedlineinfo && (opts & OPT_WRITE)) {
-	freed += datalen;
-	luaM_freearray(L, f->packedlineinfo, datalen, unsigned char);
-	f->packedlineinfo = packedlineinfo;
+    all_readonly = TRUE;
+    
+    if (opts & OPT_LOCVARS) {
+      for (i = 0; i < f->sizelocvars; i++) {
+	TString *str = f->locvars[i].varname;
+
+	f->locvars[i].varname = freeze_tstring(L, str, &freed);
+	if ((uint8_t *) f->locvars[i].varname < flash_area) {
+	  all_readonly = FALSE;
+	}
+      }
+
+      if (opts & OPT_LOCVAR_VECTOR) {
+	if (all_readonly && f->sizelocvars && !is_flash(f->locvars)) {
+	  LocVar *ro_locvars = find_data(f->locvars, f->sizelocvars * sizeof(LocVar));
+	  if (ro_locvars) {
+	    luaM_freearray(L, f->locvars, f->sizelocvars, LocVar);
+	    f->locvars = ro_locvars;
+	    freed += f->sizelocvars * sizeof(LocVar);
+	  }
+	}
       }
     }
-  }
+
+    if (opts & OPT_CONSTANTS) {
+      all_readonly = TRUE;
+      
+      for (i = 0; i < f->sizek; i++) {
+	TValue *val = &f->k[i];
+
+	if (ttisstring(val)) {
+	  TString *frozen = freeze_tstring(L, rawtsvalue(val), &freed);
+	  if ((uint8_t *) frozen > flash_area) {
+	    setsvalue(L, val, frozen);
+	  } else {
+	    all_readonly = FALSE;
+	  }
+	} else if (iscollectable(val)) {
+	  all_readonly = FALSE;
+	}
+      }
+
+      if (opts & OPT_CONSTANT_VECTOR) {
+	if (all_readonly && f->sizek && !is_flash(f->k)) {
+	  TValue *ro_k = find_data(f->k, f->sizek * sizeof(TValue));
+	  if (ro_k) {
+	    luaM_freearray(L, f->k, f->sizek, TValue);
+	    f->k = ro_k;
+	    freed += f->sizek * sizeof(TValue);
+	  }
+	}
+      }
+    }
+
+#ifdef LUA_OPTIMIZE_DEBUG
+    if (opts & OPT_LINEINFO) {
+      if (f->packedlineinfo && !is_flash(f->packedlineinfo)) {
+	int datalen = c_strlen(cast(char *, f->packedlineinfo))+1;
+	unsigned char *packedlineinfo = (unsigned char *) find_data(f->packedlineinfo, datalen);
+	if (packedlineinfo && (opts & OPT_WRITE)) {
+	  freed += datalen;
+	  luaM_freearray(L, f->packedlineinfo, datalen, unsigned char);
+	  f->packedlineinfo = packedlineinfo;
+	}
+      }
+    }
 #endif
 
-  for (i = 0; i < f->sizep; i++) {
-    freed += do_freeze_proto(L, f->p[i], depth + 1);
+    for (i = 0; i < f->sizep; i++) {
+      pending_push(&protos, f->p[i]);
+    }
   }
+
+  pending_free(&protos);
 
   return freed;
 }
 
 static int do_freeze_closure(lua_State *L, Closure *cl) {
-  if (cl->c.isC) {
-    NODE_DBG("Skipping C Closure\n");
-    return 0;
-  }
+  PENDING_LIST closures;
+  memset(&closures, 0, sizeof(closures));
 
-  Proto *f = cl->l.p;
+  pending_push(&closures, cl);
+  int result = 0;
 
-  // Now we have to freeze this block.....
-  int result = do_freeze_proto(L, f, 0);
+  while (cl = (Closure *) pending_get(&closures)) {
+    if (cl->c.isC) {
+      NODE_DBG("Skipping C Closure\n");
+      continue;
+    }
 
-  if (!result) {
-    return 0;
-  }
+    Proto *f = cl->l.p;
 
-  int i;
-  UpVal **upval = cl->l.upvals;
+    // Now we have to freeze this block.....
+    result += do_freeze_proto(L, f);
 
-  for (i = 0; i < cl->l.nupvalues; i++, upval++) {
-    TValue *val = (*upval)->v;
+    int i;
+    UpVal **upval = cl->l.upvals;
 
-    if (ttisfunction(val)) {
-      Closure *inner = clvalue(val);
+    for (i = 0; i < cl->l.nupvalues; i++, upval++) {
+      TValue *val = (*upval)->v;
 
-      result += do_freeze_closure(L, inner);
+      if (ttisfunction(val)) {
+	Closure *inner = clvalue(val);
+
+	pending_push(&closures, inner);
+      }
     }
   }
+
+  pending_free(&closures);
 
   return result;
 }
