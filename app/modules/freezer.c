@@ -107,8 +107,10 @@ static inline bool is_flash(void *ptr) {
 }
 
 static void move_to_flash(uint8_t *dest, const uint8_t *src, size_t len) {
-  lua_assert(dest >= flash_area && dest + len < flash_area + sizeof(flash_area));
-  platform_flash_write(src, dest - flash_area + flash_area_phys, len);
+  if (len > 0) {
+    lua_assert(dest >= flash_area && dest + len < flash_area + sizeof(flash_area));
+    platform_flash_write(src, dest - flash_area + flash_area_phys, len);
+  }
 }
 
 static void needs_erase() {
@@ -119,17 +121,23 @@ static void needs_erase() {
   move_to_flash((uint8_t *) &flash_area[0], &byte, sizeof(byte));
 }
 
-static void *find_data(const void *src, size_t len) {
+/* Look for the data block defined by both data pointers concatenated. The first
+ * length must not be zero unless both are.
+ */
+static void *find_data(const void *src, size_t len, const void *src2, size_t len2) {
   if (!len) {
     return (void *) (flash_area + 4);
   }
-  size_t blen = (len + 7) & ~7;
+  size_t blen = (len + len2 + 7) & ~7;
 
   if (opts & OPT_DEBUG) {
-    NODE_DBG("Looking for %d bytes (blocklen %d): ", len, blen);
+    NODE_DBG("Looking for %d bytes (blocklen %d): ", len + len2, blen);
     int i;
     for (i = 0; i < len && i < 24; i++) {
       NODE_DBG("%02x ", ((unsigned char *) src)[i]);
+    }
+    for (; i < len + len2 && i < 24; i++) {
+      NODE_DBG("%02x ", ((unsigned char *) src2)[i - len]);
     }
     NODE_DBG("\n");
   }
@@ -139,7 +147,8 @@ static void *find_data(const void *src, size_t len) {
   while (*ptr > 0) {
     int blocklen = *ptr;
     if (blocklen == blen) {
-      if (memcmp(ptr + 1, src, len) == 0) {
+      if (memcmp(ptr + 1, src, len) == 0
+	  && (len2 == 0 || memcmp((char *) (ptr + 1) + len, src2, len2) == 0)) {
 
 	NODE_DBG_OPT(".. found at 0x%08x\n", ptr);
 	return (void *) (ptr + 1);
@@ -177,6 +186,7 @@ static void *find_data(const void *src, size_t len) {
   move_to_flash((uint8_t *) ptr, (uint8_t *) &blen, sizeof(blen));
   ptr++;
   move_to_flash((uint8_t *) ptr, src, len);
+  move_to_flash((uint8_t *) ptr + len, src2, len2);
   move_to_flash(((uint8_t *) ptr) + blen, (uint8_t *) &blen, sizeof(blen));
 
   int32_t *blockend = (int32_t *) (((uint8_t *) ptr) + blen + sizeof(int32_t));
@@ -195,7 +205,10 @@ static void *find_data(const void *src, size_t len) {
     NODE_DBG("0x%x: HDR %d != %d\n", blockbase, *blockbase, blen);
   }
   if (memcmp(ptr, src, len) != 0) {
-    NODE_DBG("0x%x, %d: BLK differs\n", ptr, len);
+    NODE_DBG("0x%x, %d: BLK differs\n", ptr, len + len2);
+  }
+  if (len2 > 0 && memcmp((uint8_t *) ptr + len, src2, len2) != 0) {
+    NODE_DBG("0x%x, %d: BLK(2) differs\n", ptr, len + len2);
   }
   if (blockend[-1] != blen) {
     NODE_DBG("0x%x: TRL %d != %d\n", blockend - 1, blockend[-1], blen);
@@ -256,16 +269,17 @@ static TString *freeze_tstring(lua_State *L, TString *s, size_t *freedp) {
   NODE_DBG_OPT("Freezing string '%s'\n", getstr(s));
 
   // Make a new readonly TString object
+  TString tstr = *s;
+
+  tstr.tsv.next = NULL;
+  tstr.tsv.marked &= READONLYMASK;
+  ((unsigned short *) &tstr)[3] = -1;  // Zap unused field
+
   size_t len = sizestring(&s->tsv);
-  TString *tstr = (TString *) alloca(len);
-  memcpy(tstr, s, len);
-  tstr->tsv.next = NULL;
-  tstr->tsv.marked &= READONLYMASK;
-  ((unsigned short *) tstr)[3] = -1;  // Zap unused field
 
-  tstr = find_data(tstr, len);
+  TString *new_tstr = find_data(&tstr, sizeof(tstr), &tstr + 1, len - sizeof(tstr));
 
-  if (!tstr) {
+  if (!new_tstr) {
     return s;
   }
 
@@ -275,7 +289,7 @@ static TString *freeze_tstring(lua_State *L, TString *s, size_t *freedp) {
     return s;
   }
 
-  return tstr;
+  return new_tstr;
 }
 
 static int do_freeze_proto(lua_State *L, Proto *f) {
@@ -301,7 +315,7 @@ static int do_freeze_proto(lua_State *L, Proto *f) {
     }
 
     if (opts & OPT_CODE) {
-      Instruction *newcode = (Instruction *) find_data(f->code, sizeof(f->code[0]) * f->sizecode);
+      Instruction *newcode = (Instruction *) find_data(f->code, sizeof(f->code[0]) * f->sizecode, NULL, 0);
       if (newcode && (opts & OPT_WRITE)) {
 	luaM_freearray(L, f->code, f->sizecode, Instruction);
 	f->code = newcode;
@@ -323,7 +337,7 @@ static int do_freeze_proto(lua_State *L, Proto *f) {
 
       if (opts & OPT_UPVAL_VECTOR) {
 	if (all_readonly && f->sizeupvalues && !is_flash(f->upvalues)) {
-	  TString **ro_upvalues = find_data(f->upvalues, f->sizeupvalues * sizeof(TString));
+	  TString **ro_upvalues = find_data(f->upvalues, f->sizeupvalues * sizeof(TString), NULL, 0);
 	  if (ro_upvalues) {
 	    luaM_freearray(L, f->upvalues, f->sizeupvalues, TString);
 	    f->upvalues = ro_upvalues;
@@ -347,7 +361,7 @@ static int do_freeze_proto(lua_State *L, Proto *f) {
 
       if (opts & OPT_LOCVAR_VECTOR) {
 	if (all_readonly && f->sizelocvars && !is_flash(f->locvars)) {
-	  LocVar *ro_locvars = find_data(f->locvars, f->sizelocvars * sizeof(LocVar));
+	  LocVar *ro_locvars = find_data(f->locvars, f->sizelocvars * sizeof(LocVar), NULL, 0);
 	  if (ro_locvars) {
 	    luaM_freearray(L, f->locvars, f->sizelocvars, LocVar);
 	    f->locvars = ro_locvars;
@@ -377,7 +391,7 @@ static int do_freeze_proto(lua_State *L, Proto *f) {
 
       if (opts & OPT_CONSTANT_VECTOR) {
 	if (all_readonly && f->sizek && !is_flash(f->k)) {
-	  TValue *ro_k = find_data(f->k, f->sizek * sizeof(TValue));
+	  TValue *ro_k = find_data(f->k, f->sizek * sizeof(TValue), NULL, 0);
 	  if (ro_k) {
 	    luaM_freearray(L, f->k, f->sizek, TValue);
 	    f->k = ro_k;
@@ -391,7 +405,7 @@ static int do_freeze_proto(lua_State *L, Proto *f) {
     if (opts & OPT_LINEINFO) {
       if (f->packedlineinfo && !is_flash(f->packedlineinfo)) {
 	int datalen = c_strlen(cast(char *, f->packedlineinfo))+1;
-	unsigned char *packedlineinfo = (unsigned char *) find_data(f->packedlineinfo, datalen);
+	unsigned char *packedlineinfo = (unsigned char *) find_data(f->packedlineinfo, datalen, NULL, 0);
 	if (packedlineinfo && (opts & OPT_WRITE)) {
 	  freed += datalen;
 	  luaM_freearray(L, f->packedlineinfo, datalen, unsigned char);
