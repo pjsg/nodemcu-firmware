@@ -17,9 +17,6 @@
 #include "user_version.h"
 #include "rom.h"
 
-#undef NODE_DBG
-#define NODE_DBG c_printf
-
 // First 32 bits of the flash area contain flags
 // flash_area[0]:
 //     1:    0 -- erase on next boot
