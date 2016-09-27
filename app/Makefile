@@ -43,6 +43,8 @@ SUBDIRS= 					\
 	tsl2561					\
 	net					\
 	http					\
+	fatfs					\
+	esp-gdbstub				\
 	websocket
 
 endif # } PDIR
@@ -83,12 +85,14 @@ COMPONENTS_eagle.app.v6 = 			\
 	ucglib/ucglib.a 			\
 	smart/smart.a 				\
 	spiffs/spiffs.a 			\
+	fatfs/libfatfs.a			\
 	cjson/libcjson.a 			\
 	crypto/libcrypto.a 			\
 	dhtlib/libdhtlib.a 			\
 	tsl2561/tsl2561lib.a			\
 	http/libhttp.a				\
-	websocket/libwebsocket.a			\
+	websocket/libwebsocket.a		\
+	esp-gdbstub/libgdbstub.a		\
 	net/libnodemcu_net.a			\
 	modules/libmodules.a			\
 
