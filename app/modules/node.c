@@ -363,7 +363,7 @@ static int node_bootreason (lua_State *L)
     ri->reason,
     ri->exccause, ri->epc1, ri->epc2, ri->epc3, ri->excvaddr, ri->depc
   };
-  int i, n = ((ri->reason != REASON_EXCEPTION_RST) ? 8 : 8);
+  int i, n = ((ri->reason != REASON_EXCEPTION_RST) ? 2 : 8);
   for (i = 0; i < n; ++i)
     lua_pushinteger (L, arr[i]);
   return n;
