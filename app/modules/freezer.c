@@ -274,7 +274,7 @@ static TString *freeze_tstring(lua_State *L, TString *s, size_t *freedp) {
 
   size_t len = sizestring(&s->tsv);
 
-  TString *new_tstr = find_data(&tstr, sizeof(tstr), &tstr + 1, len - sizeof(tstr));
+  TString *new_tstr = find_data(&tstr, sizeof(tstr), s + 1, len - sizeof(tstr));
 
   if (!new_tstr) {
     return s;
@@ -461,7 +461,11 @@ static int do_freeze_closure(lua_State *L, Closure *cl) {
 
 // takes a function and returns the number of bytes of memory saved
 static int freezer_freeze(lua_State *L) {
-  if (!lua_isfunction(L, 1)) luaL_argerror(L, 1, "must be a Lua Function");
+  if (!lua_isfunction(L, 1)) {
+    lua_pushvalue(L, 1);
+
+    return 1;
+  }
   Closure *cl = (Closure *) lua_topointer(L, 1);
 
   int result = do_freeze_closure(L, cl);
