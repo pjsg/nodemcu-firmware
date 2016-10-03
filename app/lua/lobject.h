@@ -16,6 +16,7 @@
 
 #include "llimits.h"
 #include "lua.h"
+#include "user_modules.h"
 
 
 /* tags for values visible from Lua */
@@ -348,7 +349,12 @@ typedef TValuefields TValue;
 #define setttype(obj, _tt) ( ttype_sig(obj) = add_sig(_tt) )
 #endif // #ifndef LUA_PACK_VALUE
 
-#define data_is_readonly(ptr)     (((uint32_t) (ptr)) >= 0x40200000)
+#ifdef LUA_USE_MODULES_FREEZER
+extern volatile uint8_t freezer_flash_area[];
+#define data_is_readonly(ptr)     (((uint32_t) (ptr)) >= (uint32_t) freezer_flash_area)
+#else
+#define data_is_readonly(ptr)     (0)
+#endif
 #define iscollectable(o)	(ttype(o) >= LUA_TSTRING)
 
 

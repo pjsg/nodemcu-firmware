@@ -25,7 +25,11 @@
 #define ERASE_ON_NEXT_BOOT0 	1
 #define ERASED_ON_THIS_BOOT1	2
 
-static volatile uint8_t flash_area[65536] __attribute__ ((aligned(4096), section(".irom0.text")));
+#ifndef FREEZER_FLASH_AREA_SIZE
+#define FREEZER_FLASH_AREA_SIZE   65536
+#endif
+
+volatile uint8_t freezer_flash_area[(FREEZER_FLASH_AREA_SIZE)/4096 * 4096] __attribute__ ((aligned(4096), section(".text.freezer")));
 static uint32_t flash_area_phys;
 
 #define OPT_CONSTANTS	1
@@ -100,22 +104,22 @@ static void pending_free(PENDING_LIST *list) {
 }
 
 static inline bool is_flash(void *ptr) {
-  return (uint8_t *) ptr >= flash_area && (uint8_t *) ptr < flash_area + sizeof(flash_area);
+  return (uint8_t *) ptr >= freezer_flash_area && (uint8_t *) ptr < freezer_flash_area + sizeof(freezer_flash_area);
 }
 
 static void move_to_flash(uint8_t *dest, const uint8_t *src, size_t len) {
   if (len > 0) {
-    lua_assert(dest >= flash_area && dest + len < flash_area + sizeof(flash_area));
-    platform_flash_write(src, dest - flash_area + flash_area_phys, len);
+    lua_assert(dest >= freezer_flash_area && dest + len < freezer_flash_area + sizeof(freezer_flash_area));
+    platform_flash_write(src, dest - freezer_flash_area + flash_area_phys, len);
   }
 }
 
 static void needs_erase() {
-  uint8_t byte = flash_area[0];
+  uint8_t byte = freezer_flash_area[0];
 
   byte &= ~ERASE_ON_NEXT_BOOT0;
 
-  move_to_flash((uint8_t *) &flash_area[0], &byte, sizeof(byte));
+  move_to_flash((uint8_t *) &freezer_flash_area[0], &byte, sizeof(byte));
 }
 
 /* Look for the data block defined by both data pointers concatenated. The first
@@ -123,7 +127,7 @@ static void needs_erase() {
  */
 static void *find_data(const void *src, size_t len, const void *src2, size_t len2) {
   if (!len) {
-    return (void *) (flash_area + 4);
+    return (void *) (freezer_flash_area + 4);
   }
   size_t blen = (len + len2 + 7) & ~7;
 
@@ -139,7 +143,7 @@ static void *find_data(const void *src, size_t len, const void *src2, size_t len
     NODE_DBG("\n");
   }
 
-  int32_t *ptr = ((int32_t *) flash_area) + 1;
+  int32_t *ptr = ((int32_t *) freezer_flash_area) + 1;
 
   while (*ptr > 0) {
     int blocklen = *ptr;
@@ -165,9 +169,9 @@ static void *find_data(const void *src, size_t len, const void *src2, size_t len
     return NULL;
   }
 
-  if (((uint8_t *) ptr) + 8 + blen > flash_area + sizeof(flash_area)) {
+  if (((uint8_t *) ptr) + 8 + blen > freezer_flash_area + sizeof(freezer_flash_area)) {
     // doesn't fit
-    if (flash_area[0] & ERASED_ON_THIS_BOOT1) {
+    if (freezer_flash_area[0] & ERASED_ON_THIS_BOOT1) {
       // not much to do.
     } else {
       // Lets clean out
@@ -215,7 +219,7 @@ static void *find_data(const void *src, size_t len, const void *src2, size_t len
 }
 
 static bool check_consistency() {
-  int32_t *ptr = ((int32_t *) flash_area) + 1;
+  int32_t *ptr = ((int32_t *) freezer_flash_area) + 1;
 
   while (*ptr > 0) {
     int blocklen = *ptr;
@@ -237,7 +241,7 @@ static bool check_consistency() {
 }
 
 static int freezer_info(lua_State *L) {
-  int32_t *ptr = ((int32_t *) flash_area) + 1;
+  int32_t *ptr = ((int32_t *) freezer_flash_area) + 1;
 
   while (*ptr > 0) {
     int blocklen = *ptr;
@@ -250,16 +254,16 @@ static int freezer_info(lua_State *L) {
     ptr++;
   }
 
-  lua_pushnumber(L, flash_area[0]);
-  lua_pushnumber(L, ((uint8_t *) ptr) - flash_area);
-  lua_pushnumber(L, sizeof(flash_area));
+  lua_pushnumber(L, freezer_flash_area[0]);
+  lua_pushnumber(L, ((uint8_t *) ptr) - freezer_flash_area);
+  lua_pushnumber(L, sizeof(freezer_flash_area));
   lua_pushnumber(L, check_consistency());
 
   return 4;
 }
 
 static TString *freeze_tstring(lua_State *L, TString *s, size_t *freedp) {
-  if ((uint8_t *) s >= flash_area) {
+  if ((uint8_t *) s >= freezer_flash_area) {
     return s;
   }
 
@@ -327,7 +331,7 @@ static int do_freeze_proto(lua_State *L, Proto *f) {
 	TString *str = f->upvalues[i];
 
 	f->upvalues[i] = freeze_tstring(L, str, &freed);
-	if ((uint8_t *) f->upvalues[i] < flash_area) {
+	if ((uint8_t *) f->upvalues[i] < freezer_flash_area) {
 	  all_readonly = FALSE;
 	}
       }
@@ -351,7 +355,7 @@ static int do_freeze_proto(lua_State *L, Proto *f) {
 	TString *str = f->locvars[i].varname;
 
 	f->locvars[i].varname = freeze_tstring(L, str, &freed);
-	if ((uint8_t *) f->locvars[i].varname < flash_area) {
+	if ((uint8_t *) f->locvars[i].varname < freezer_flash_area) {
 	  all_readonly = FALSE;
 	}
       }
@@ -376,7 +380,7 @@ static int do_freeze_proto(lua_State *L, Proto *f) {
 
 	if (ttisstring(val)) {
 	  TString *frozen = freeze_tstring(L, rawtsvalue(val), &freed);
-	  if ((uint8_t *) frozen > flash_area) {
+	  if ((uint8_t *) frozen > freezer_flash_area) {
 	    setsvalue(L, val, frozen);
 	  } else {
 	    all_readonly = FALSE;
@@ -487,12 +491,12 @@ static int freezer_defrost(lua_State *L) {
 }
 
 static int freezer_open(lua_State *L) {
- flash_area_phys = platform_flash_mapped2phys((uint32_t) flash_area); 
+ flash_area_phys = platform_flash_mapped2phys((uint32_t) freezer_flash_area); 
 
- if (!(flash_area[0] & ERASE_ON_NEXT_BOOT0) || !check_consistency()) {
+ if (!(freezer_flash_area[0] & ERASE_ON_NEXT_BOOT0) || !check_consistency()) {
    NODE_DBG("Resetting freezer area\n");
    int sector = -1;
-   for (uint32_t offset = 0; offset < sizeof(flash_area); offset += 4096) {
+   for (uint32_t offset = 0; offset < sizeof(freezer_flash_area); offset += 4096) {
      int sec = platform_flash_get_sector_of_address(flash_area_phys + offset);
      if (sec != sector) {
        NODE_DBG("Erasing sector %d\n", sec);
@@ -501,10 +505,10 @@ static int freezer_open(lua_State *L) {
      }
    }
  } else {
-   uint8_t byte = flash_area[0];
+   uint8_t byte = freezer_flash_area[0];
    byte = byte & ~ERASED_ON_THIS_BOOT1;
    
-   move_to_flash((uint8_t *) &flash_area[0], &byte, sizeof(byte));
+   move_to_flash((uint8_t *) &freezer_flash_area[0], &byte, sizeof(byte));
  }
 
  return 0;
