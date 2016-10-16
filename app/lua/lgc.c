@@ -23,6 +23,14 @@
 #include "ltm.h"
 #include "lrotable.h"
 
+#ifdef GC_DEBUG
+#include "c_stdio.h"
+#include "user_interface.h"
+#define GC_DBG	c_printf
+#else
+#define GC_DBG(...)
+#endif
+
 #define GCSTEPSIZE	1024u
 #define GCSWEEPMAX	40
 #define GCSWEEPCOST	10
@@ -390,6 +398,10 @@ static void cleartable (GCObject *l) {
 
 
 static void freeobj (lua_State *L, GCObject *o) {
+#ifdef GC_DEBUG
+  int start = system_get_free_heap_size();
+  int type = o->gch.tt;
+#endif
   switch (o->gch.tt) {
     case LUA_TPROTO: luaF_freeproto(L, gco2p(o)); break;
     case LUA_TFUNCTION: luaF_freeclosure(L, gco2cl(o)); break;
@@ -401,6 +413,7 @@ static void freeobj (lua_State *L, GCObject *o) {
       break;
     }
     case LUA_TSTRING: {
+      GC_DBG("String: '%s'\n", getstr(rawgco2ts(o)));
       G(L)->strt.nuse--;
       luaM_freemem(L, o, sizestring(gco2ts(o)));
       break;
@@ -411,6 +424,7 @@ static void freeobj (lua_State *L, GCObject *o) {
     }
     default: lua_assert(0);
   }
+  GC_DBG("F(%d): %x, delta=%d\n", type, (uint32_t) o, system_get_free_heap_size() - start);
 }
 
 
