@@ -24,6 +24,8 @@ SDK_DIR:=$(TOP_DIR)/sdk/esp_iot_sdk_v$(SDK_VER)
 CCFLAGS:= -I$(TOP_DIR)/sdk-overrides/include -I$(SDK_DIR)/include
 LDFLAGS:= -L$(SDK_DIR)/lib -L$(SDK_DIR)/ld $(LDFLAGS)
 
+#DEBUG=1
+
 ifdef DEBUG
   CCFLAGS += -ggdb -O0
   LDFLAGS += -ggdb
@@ -160,6 +162,7 @@ CCFLAGS += 			\
 CFLAGS = $(CCFLAGS) $(DEFINES) $(EXTRA_CCFLAGS) $(STD_CFLAGS) $(INCLUDES)
 DFLAGS = $(CCFLAGS) $(DDEFINES) $(EXTRA_CCFLAGS) $(STD_CFLAGS) $(INCLUDES)
 
+INCLUDES += -include $(TOP_DIR)/user_config.h
 
 #############################################################
 # Functions
@@ -297,7 +300,11 @@ endif
 
 $(OBJODIR)/%.o: %.c
 	@mkdir -p $(OBJODIR);
+ifdef DEBUG
+	$(CC) $(if $(findstring $<,$(DSRCS)),$(DFLAGS),$(CFLAGS)) $(COPTS_$(*F)) -Wa,-adhln=$@.s -o $@ -c $<
+else
 	$(CC) $(if $(findstring $<,$(DSRCS)),$(DFLAGS),$(CFLAGS)) $(COPTS_$(*F)) -o $@ -c $<
+endif
 
 $(OBJODIR)/%.d: %.c
 	@mkdir -p $(OBJODIR);
