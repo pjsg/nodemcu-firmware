@@ -3,6 +3,23 @@
 The NodeMCU project uses the [SPIFFS](https://github.com/pellepl/spiffs) 
 filesystem to store files in the flash chip. The technical details about how this is configured can be found below, along with various build time options.
 
+# Initial filesystem
+
+There are two ways of setting up the initial contents of the file system, and each has their advantages and disadvantages. These two mechanisms are `spiffsimg` and `FS_INIT`.
+
+## spiffsimg approach
+
+The `spiffsimg` tool creates an image of the filesystem at build time which can then be flashed into the ESP8266 at the same time that the firmware is flashed onto it. This
+approach gives a fair amount of control over the size and position of the filesystem. It is slow to flash the filesystem image, especially for large devices. On the
+up side, the initial boot of the ESP8266 is fast as the filesystem is already valid.
+
+## FS_INIT approach
+
+The `FS_INIT` approach puts the initial contents of the filesystem into the firmware and writes it into the spiffs filesystem whenever the filesystem is automatically formatted. If the filesystem was already formatted when the firmware first starts, then the data will not be copied over. 
+You can use `file.fsinit()` to copy over the files into the filesystem at any time.
+
+To use the `FS_INIT` approach, put the files that you want into a subdirectory of `local` on the build tree, and then set FS_INIT=dirname on the firmware make command. 
+
 # spiffsimg - Manipulate SPI Flash File System disk images
 
 Ever wished you could prepare a SPIFFS image offline and flash the whole

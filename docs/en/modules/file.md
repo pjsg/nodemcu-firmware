@@ -569,3 +569,23 @@ end
 #### See also
 - [`file.open()`](#fileopen)
 - [`file.readline()` / `file.obj:readline()`](#filereadline)
+
+## file.fsinit()
+
+Copies the initial set of files built into the firmware (using `FS_INIT`) into the filesystem. This can be part of a 'restore to factory' process.
+
+#### Syntax
+`file.fsinit()`
+
+#### Parameters
+None
+
+#### Returns
+Nothing
+
+#### Example 
+```lua
+file.format()
+file.fsinit()
+```
+

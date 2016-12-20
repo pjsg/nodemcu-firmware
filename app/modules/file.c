@@ -8,6 +8,7 @@
 #include "c_types.h"
 #include "vfs.h"
 #include "c_string.h"
+#include "fs_init.h"
 
 #include <alloca.h>
 
@@ -516,6 +517,11 @@ static int file_vol_umount( lua_State *L )
   return 1;
 }
 
+static int file_fsinit(lua_State *L) {
+  fs_init();
+  return 0;
+}
+
 
 static const LUA_REG_TYPE file_obj_map[] =
 {
@@ -560,6 +566,7 @@ static const LUA_REG_TYPE file_map[] = {
   { LSTRKEY( "rename" ),    LFUNCVAL( file_rename ) },
   { LSTRKEY( "exists" ),    LFUNCVAL( file_exists ) },  
   { LSTRKEY( "fsinfo" ),    LFUNCVAL( file_fsinfo ) },
+  { LSTRKEY( "fsinit" ),    LFUNCVAL( file_fsinit ) },
   { LSTRKEY( "on" ),        LFUNCVAL( file_on ) },
 #ifdef BUILD_FATFS
   { LSTRKEY( "mount" ),     LFUNCVAL( file_mount ) },

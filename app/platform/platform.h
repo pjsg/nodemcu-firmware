@@ -9,6 +9,7 @@
 #include "driver/pwm.h"
 #include "driver/uart.h"
 #include "task/task.h"
+#include "fs_init.h"
 
 // Error / status codes
 enum

@@ -128,11 +128,23 @@ OIMAGES := $(GEN_IMAGES:%=$(IMAGEODIR)/%)
 BINODIR := $(ODIR)/$(TARGET)/$(FLAVOR)/bin
 OBINS := $(GEN_BINS:%=$(BINODIR)/%)
 
+PRE_BUILD := pre_build
+
 ifndef PDIR
 ifneq ($(wildcard $(TOP_DIR)/local/fs/*),)
 SPECIAL_MKTARGETS += spiffs-image
 else
 SPECIAL_MKTARGETS += spiffs-image-remove
+endif
+
+ifdef FS_INIT
+ifneq ($(wildcard $(TOP_DIR)/local/$(FS_INIT)/*),)
+PRE_BUILD += fs-init-make
+else
+error FS_INIT must be a directory inside the $(TOP_DIR)/local directory
+endif
+else
+PRE_BUILD += fs-init-remove
 endif
 endif
 
@@ -195,7 +207,7 @@ $(BINODIR)/%.bin: $(IMAGEODIR)/%.out
 # Should be done in top-level makefile only
 #
 
-all:	$(SDK_DIR_DEPENDS) pre_build .subdirs $(OBJS) $(OLIBS) $(OIMAGES) $(OBINS) $(SPECIAL_MKTARGETS)
+all:	$(SDK_DIR_DEPENDS) $(PRE_BUILD) .subdirs $(OBJS) $(OLIBS) $(OIMAGES) $(OBINS) $(SPECIAL_MKTARGETS)
 
 .PHONY: sdk_extracted
 .PHONY: sdk_patched
@@ -291,6 +303,16 @@ else
 pre_build:
 	@-rm -f $(TOP_DIR)/app/modules/server-ca.crt.h
 endif
+
+.PHONY: fs-init-make
+
+fs-init-make:
+	@$(TOP_DIR)/tools/make_fs_init.pl $(TOP_DIR)/local/$(FS_INIT) > $(TOP_DIR)/app/.output/fs_data.h
+
+.PHONY: fs-init-remove
+
+fs-init-remove:
+	@-echo > $(TOP_DIR)/app/.output/fs_data.h
 
 
 $(OBJODIR)/%.o: %.c
