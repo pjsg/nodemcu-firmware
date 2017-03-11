@@ -761,6 +761,123 @@ LUALIB_API int (luaL_loadstring) (lua_State *L, const char *s) {
 
 /* }====================================================== */
 
+/*
+ * Functions to deal with memory lookaside list
+ */
+
+#define MEM_SMALLEST    1
+#define MEM_LARGEST     10
+
+#ifndef FAST_MEM_KB
+#define FAST_MEM_KB     2
+#endif
+
+#if FAST_MEM_KB
+#ifndef MEMORY_TRACE
+static 
+#endif
+struct _fast_mem {
+  size_t available;     // The amount of memory that I can put in this slot
+  void *head;
+#ifdef MEMORY_TRACE
+  size_t hits;
+  size_t misses;
+  size_t unavail;
+#endif
+} fast_mem[MEM_LARGEST - MEM_SMALLEST + 1] = { 
+        { 32 * FAST_MEM_KB  }, 
+        { 32 * FAST_MEM_KB  }, 
+        { 64 * FAST_MEM_KB  }, 
+        { 64 * FAST_MEM_KB  }, 
+        { 256 * FAST_MEM_KB }, 
+        { 128 * FAST_MEM_KB }, 
+        { 128 * FAST_MEM_KB }, 
+        { 192 * FAST_MEM_KB }, 
+        { 64 * FAST_MEM_KB  }, 
+        { 64 * FAST_MEM_KB  } };
+
+static void fast_free(void *ptr, size_t len) {
+  if (len & 3) {
+    c_free(ptr);
+    return;
+  }
+  size_t index = len >> 2;
+  if (index >= MEM_SMALLEST && index <= MEM_LARGEST) {
+    struct _fast_mem *fm = fast_mem + index - MEM_SMALLEST;
+    if (fm->available >= len) {
+      *(void**) ptr = fm->head;
+      fm->head = ptr;
+      fm->available -= len;
+      return;
+    }
+#ifdef MEMORY_TRACE
+    fm->unavail++;
+#endif
+    // Lets readjust the bucket availabilities
+    int i;
+    for (i = MEM_SMALLEST; i <= MEM_LARGEST; i++) {
+      if (i != index) {
+        struct _fast_mem *fmi = fast_mem + i - MEM_SMALLEST;
+        if (fmi->available >= 4) {
+          fmi->available -= 4;
+          fm->available += 4;
+        }
+      }
+    }
+  }
+  c_free(ptr);
+  return;
+}
+
+static void *fast_alloc(size_t len) {
+  if (len & 3) {
+    return NULL;
+  }
+  size_t index = len >> 2;
+  if (index >= MEM_SMALLEST && index <= MEM_LARGEST) {
+    struct _fast_mem *fm = fast_mem + index - MEM_SMALLEST;
+    if (fm->head) {
+      void *ptr = fm->head;
+      fm->head = *(void **) ptr;
+      fm->available += len;
+#ifdef MEMORY_TRACE
+      fm->hits++;
+#endif
+      return ptr;
+    }
+#ifdef MEMORY_TRACE
+    fm->misses++;
+#endif
+  }
+  return NULL;
+}
+#else
+#define fast_free(ptr, size)    c_free(ptr)
+#define fast_alloc(size)    NULL
+#endif
+
+#ifdef MEMORY_TRACE
+unsigned char fast_trace[4069];
+int fast_trace_index;
+
+static void fast_record(size_t osize, size_t nsize) {
+  osize = osize >> 2;
+  nsize = nsize >> 2;
+  if (osize > 15) {
+    osize = 15;
+  }
+  if (nsize > 15) {
+    nsize = 15;
+  }
+  unsigned char val = (nsize << 4) | osize;
+  if (fast_trace_index < sizeof(fast_trace)) {
+    fast_trace[fast_trace_index++] = val;
+  }
+}
+#endif
+
+/* }====================================================== */
+
 
 static int l_check_memlimit(lua_State *L, size_t needbytes) {
   global_State *g = G(L);
@@ -779,18 +896,53 @@ static int l_check_memlimit(lua_State *L, size_t needbytes) {
   return (g->totalbytes >= limit) ? 1 : 0;
 }
 
+#ifdef MEMORY_TRACE
+int size_count[256];
+#endif
+
 
 static void *l_alloc (void *ud, void *ptr, size_t osize, size_t nsize) {
   lua_State *L = (lua_State *)ud;
   int mode = L == NULL ? 0 : G(L)->egcmode;
   void *nptr;
 
+  nsize = (nsize + 3) & ~3;
+  osize = (osize + 3) & ~3;
+#ifdef MEMORY_TRACE
+  fast_record((!osize && !nsize) ? 4 : osize, nsize);
+#endif
+
   if (nsize == 0) {
-    c_free(ptr);
+    fast_free(ptr, osize);
     return NULL;
   }
-  if (L != NULL && (mode & EGC_ALWAYS)) /* always collect memory if requested */
+#ifdef MEMORY_TRACE
+  int index = nsize;
+  if (index >= sizeof(size_count) / sizeof(size_count[0])) {
+    index = sizeof(size_count) / sizeof(size_count[0]) - 1;
+  }
+  size_count[index]++;
+#endif
+
+  if (osize == nsize) {
+    return ptr;
+  }
+
+  nptr = fast_alloc(nsize);
+  if (nptr) {
+    if (osize) {
+      memcpy(nptr, ptr, osize > nsize ? nsize : osize);
+      fast_free(ptr, osize);
+    }
+    return nptr;
+  }
+
+  if (L != NULL && (mode & EGC_ALWAYS)) { /* always collect memory if requested */
+#ifdef MEMORY_TRACE
+    fast_record(0, 0);
+#endif
     luaC_fullgc(L);
+  }
   if(nsize > osize && L != NULL) {
 #if defined(LUA_STRESS_EMERGENCY_GC)
     luaC_fullgc(L);
@@ -798,7 +950,18 @@ static void *l_alloc (void *ud, void *ptr, size_t osize, size_t nsize) {
     if(G(L)->memlimit > 0 && (mode & EGC_ON_MEM_LIMIT) && l_check_memlimit(L, nsize - osize))
       return NULL;
   }
-  nptr = (void *)c_realloc(ptr, nsize);
+  nptr = c_realloc(NULL, nsize);
+  if (nptr) {
+    if (ptr) {
+      memcpy(nptr, ptr, osize > nsize ? nsize : osize);
+      fast_free(ptr, osize);
+    }
+    return nptr;
+  } 
+  if (osize > nsize) {
+    // Lets hope that this does not fail.... (making the block smaller)
+    nptr = c_realloc(ptr, nsize);
+  }
   if (nptr == NULL && L != NULL && (mode & EGC_ON_ALLOC_FAILURE)) {
     luaC_fullgc(L); /* emergency full collection. */
     nptr = (void *)c_realloc(ptr, nsize); /* try allocation again */
