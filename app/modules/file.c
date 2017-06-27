@@ -13,9 +13,21 @@
 
 #define FILE_READ_CHUNK 1024
 
+// use this time/date in absence of a timestamp
+#define FILE_TIMEDEF_YEAR 1970
+#define FILE_TIMEDEF_MON 01
+#define FILE_TIMEDEF_DAY 01
+#define FILE_TIMEDEF_HOUR 00
+#define FILE_TIMEDEF_MIN 00
+#define FILE_TIMEDEF_SEC 00
+
 static int file_fd = 0;
+static int file_fd_ref = LUA_NOREF;
 static int rtc_cb_ref = LUA_NOREF;
 
+typedef struct _file_fd_ud {
+  int fd;
+} file_fd_ud;
 
 static void table2tm( lua_State *L, vfs_time *tm )
 {
@@ -29,12 +41,12 @@ static void table2tm( lua_State *L, vfs_time *tm )
   lua_getfield( L, idx, "min" );
   lua_getfield( L, idx, "sec" );
 
-  tm->year = luaL_optint( L, ++idx, 2016 );
-  tm->mon  = luaL_optint( L, ++idx, 6 );
-  tm->day  = luaL_optint( L, ++idx, 21 );
-  tm->hour = luaL_optint( L, ++idx, 0 );
-  tm->min  = luaL_optint( L, ++idx, 0 );
-  tm->sec  = luaL_optint( L, ++idx, 0 );
+  tm->year = luaL_optint( L, ++idx, FILE_TIMEDEF_YEAR );
+  tm->mon  = luaL_optint( L, ++idx, FILE_TIMEDEF_MON );
+  tm->day  = luaL_optint( L, ++idx, FILE_TIMEDEF_DAY );
+  tm->hour = luaL_optint( L, ++idx, FILE_TIMEDEF_HOUR );
+  tm->min  = luaL_optint( L, ++idx, FILE_TIMEDEF_MIN );
+  tm->sec  = luaL_optint( L, ++idx, FILE_TIMEDEF_SEC );
 
   // remove items from stack
   lua_pop( L, 6 );
@@ -96,11 +108,46 @@ static int file_on(lua_State *L)
 // Lua: close()
 static int file_close( lua_State* L )
 {
-  if(file_fd){
-    vfs_close(file_fd);
-    file_fd = 0;
+  int need_pop = FALSE;
+  file_fd_ud *ud;
+
+  if (lua_type( L, 1 ) != LUA_TUSERDATA) {
+    // fall back to last opened file
+    if (file_fd_ref != LUA_NOREF) {
+      lua_rawgeti( L, LUA_REGISTRYINDEX, file_fd_ref );
+      // top of stack is now default file descriptor
+      ud = (file_fd_ud *)luaL_checkudata(L, -1, "file.obj");
+      lua_pop( L, 1 );
+    } else {
+      // no default file currently opened
+      return 0;
+    }
+  } else {
+    ud = (file_fd_ud *)luaL_checkudata(L, 1, "file.obj");
+  }
+
+  // unref default file descriptor
+  luaL_unref( L, LUA_REGISTRYINDEX, file_fd_ref );
+  file_fd_ref = LUA_NOREF;
+
+  if(ud->fd){
+      vfs_close(ud->fd);
+      // mark as closed
+      ud->fd = 0;
   }
   return 0;  
+}
+
+static int file_obj_free( lua_State *L )
+{
+  file_fd_ud *ud = (file_fd_ud *)luaL_checkudata(L, 1, "file.obj");
+  if (ud->fd) {
+    // close file if it's still open
+    vfs_close(ud->fd);
+    ud->fd = 0;
+  }
+
+  return 0;
 }
 
 // Lua: format()
@@ -135,10 +182,10 @@ static int file_fscfg (lua_State *L)
 static int file_open( lua_State* L )
 {
   size_t len;
-  if(file_fd){
-    vfs_close(file_fd);
-    file_fd = 0;
-  }
+
+  // unref last file descriptor to allow gc'ing if not kept by user script
+  luaL_unref( L, LUA_REGISTRYINDEX, file_fd_ref );
+  file_fd_ref = LUA_NOREF;
 
   const char *fname = luaL_checklstring( L, 1, &len );
   const char *basename = vfs_basename( fname );
@@ -151,7 +198,14 @@ static int file_open( lua_State* L )
   if(!file_fd){
     lua_pushnil(L);
   } else {
-    lua_pushboolean(L, 1);
+    file_fd_ud *ud = (file_fd_ud *) lua_newuserdata( L, sizeof( file_fd_ud ) );
+    ud->fd = file_fd;
+    luaL_getmetatable( L, "file.obj" );
+    lua_setmetatable( L, -2 );
+
+    // store reference to opened file
+    lua_pushvalue( L, -1 );
+    file_fd_ref = luaL_ref( L, LUA_REGISTRYINDEX );
   }
   return 1; 
 }
@@ -160,14 +214,13 @@ static int file_open( lua_State* L )
 static int file_list( lua_State* L )
 {
   vfs_dir  *dir;
-  vfs_item *item;
 
   if (dir = vfs_opendir("")) {
     lua_newtable( L );
-    while (item = vfs_readdir(dir)) {
-      lua_pushinteger(L, vfs_item_size(item));
-      lua_setfield(L, -2, vfs_item_name(item));
-      vfs_closeitem(item);
+    struct vfs_stat stat;
+    while (vfs_readdir(dir, &stat) == VFS_RES_OK) {
+      lua_pushinteger(L, stat.size);
+      lua_setfield(L, -2, stat.name);
     }
     vfs_closedir(dir);
     return 1;
@@ -175,19 +228,36 @@ static int file_list( lua_State* L )
   return 0;
 }
 
-static int file_seek (lua_State *L) 
+static int get_file_obj( lua_State *L, int *argpos )
 {
+  if (lua_type( L, 1 ) == LUA_TUSERDATA) {
+    file_fd_ud *ud = (file_fd_ud *)luaL_checkudata(L, 1, "file.obj");
+    *argpos = 2;
+    return ud->fd;
+  } else {
+    *argpos = 1;
+    return file_fd;
+  }
+}
+
+#define GET_FILE_OBJ int argpos; \
+  int fd = get_file_obj( L, &argpos );
+
+static int file_seek (lua_State *L)
+{
+  GET_FILE_OBJ;
+
   static const int mode[] = {VFS_SEEK_SET, VFS_SEEK_CUR, VFS_SEEK_END};
   static const char *const modenames[] = {"set", "cur", "end", NULL};
-  if(!file_fd)
+  if(!fd)
     return luaL_error(L, "open a file first");
-  int op = luaL_checkoption(L, 1, "cur", modenames);
-  long offset = luaL_optlong(L, 2, 0);
-  op = vfs_lseek(file_fd, offset, mode[op]);
+  int op = luaL_checkoption(L, argpos, "cur", modenames);
+  long offset = luaL_optlong(L, ++argpos, 0);
+  op = vfs_lseek(fd, offset, mode[op]);
   if (op < 0)
     lua_pushnil(L);  /* error */
   else
-    lua_pushinteger(L, vfs_tell(file_fd));
+    lua_pushinteger(L, vfs_tell(fd));
   return 1;
 }
 
@@ -199,11 +269,8 @@ static int file_exists( lua_State* L )
   const char *basename = vfs_basename( fname );
   luaL_argcheck(L, c_strlen(basename) <= FS_OBJ_NAME_LEN && c_strlen(fname) == len, 1, "filename invalid");
 
-  vfs_item *stat = vfs_stat((char *)fname);
-
-  lua_pushboolean(L, stat ? 1 : 0);
-
-  if (stat) vfs_closeitem(stat);
+  struct vfs_stat stat;
+  lua_pushboolean(L, vfs_stat((char *)fname, &stat) == VFS_RES_OK ? 1 : 0);
 
   return 1;
 }
@@ -215,7 +282,6 @@ static int file_remove( lua_State* L )
   const char *fname = luaL_checklstring( L, 1, &len );    
   const char *basename = vfs_basename( fname );
   luaL_argcheck(L, c_strlen(basename) <= FS_OBJ_NAME_LEN && c_strlen(fname) == len, 1, "filename invalid");
-  file_close(L);
   vfs_remove((char *)fname);
   return 0;
 }
@@ -223,9 +289,11 @@ static int file_remove( lua_State* L )
 // Lua: flush()
 static int file_flush( lua_State* L )
 {
-  if(!file_fd)
+  GET_FILE_OBJ;
+
+  if(!fd)
     return luaL_error(L, "open a file first");
-  if(vfs_flush(file_fd) == 0)
+  if(vfs_flush(fd) == 0)
     lua_pushboolean(L, 1);
   else
     lua_pushnil(L);
@@ -236,10 +304,6 @@ static int file_flush( lua_State* L )
 static int file_rename( lua_State* L )
 {
   size_t len;
-  if(file_fd){
-    vfs_close(file_fd);
-    file_fd = 0;
-  }
 
   const char *oldname = luaL_checklstring( L, 1, &len );
   const char *basename = vfs_basename( oldname );
@@ -257,13 +321,77 @@ static int file_rename( lua_State* L )
   return 1;
 }
 
+// Lua: stat(filename)
+static int file_stat( lua_State* L )
+{
+  size_t len;
+  const char *fname = luaL_checklstring( L, 1, &len );    
+  luaL_argcheck( L, c_strlen(fname) <= FS_OBJ_NAME_LEN && c_strlen(fname) == len, 1, "filename invalid" );
+
+  struct vfs_stat stat;
+  if (vfs_stat( (char *)fname, &stat ) != VFS_RES_OK) {
+    lua_pushnil( L );
+    return 1;
+  }
+
+  lua_createtable( L, 0, 7 );
+
+  lua_pushinteger( L, stat.size );
+  lua_setfield( L, -2, "size" );
+
+  lua_pushstring( L, stat.name );
+  lua_setfield( L, -2, "name" );
+
+  lua_pushboolean( L, stat.is_dir );
+  lua_setfield( L, -2, "is_dir" );
+
+  lua_pushboolean( L, stat.is_rdonly );
+  lua_setfield( L, -2, "is_rdonly" );
+
+  lua_pushboolean( L, stat.is_hidden );
+  lua_setfield( L, -2, "is_hidden" );
+
+  lua_pushboolean( L, stat.is_sys );
+  lua_setfield( L, -2, "is_sys" );
+
+  lua_pushboolean( L, stat.is_arch );
+  lua_setfield( L, -2, "is_arch" );
+
+  // time stamp as sub-table
+  lua_createtable( L, 0, 6 );
+
+  lua_pushinteger( L, stat.tm_valid ? stat.tm.year : FILE_TIMEDEF_YEAR );
+  lua_setfield( L, -2, "year" );
+
+  lua_pushinteger( L, stat.tm_valid ? stat.tm.mon : FILE_TIMEDEF_MON );
+  lua_setfield( L, -2, "mon" );
+
+  lua_pushinteger( L, stat.tm_valid ? stat.tm.day : FILE_TIMEDEF_DAY );
+  lua_setfield( L, -2, "day" );
+
+  lua_pushinteger( L, stat.tm_valid ? stat.tm.hour : FILE_TIMEDEF_HOUR );
+  lua_setfield( L, -2, "hour" );
+
+  lua_pushinteger( L, stat.tm_valid ? stat.tm.min : FILE_TIMEDEF_MIN );
+  lua_setfield( L, -2, "min" );
+
+  lua_pushinteger( L, stat.tm_valid ? stat.tm.sec : FILE_TIMEDEF_SEC );
+  lua_setfield( L, -2, "sec" );
+
+  lua_setfield( L, -2, "time" );
+
+  return 1;
+}
+
 // g_read()
-static int file_g_read( lua_State* L, int n, int16_t end_char )
+static int file_g_read( lua_State* L, int n, int16_t end_char, int fd )
 {
   static char *heap_mem = NULL;
   // free leftover memory
-  if (heap_mem)
+  if (heap_mem) {
     luaM_free(L, heap_mem);
+    heap_mem = NULL;
+  }
 
   if(n <= 0)
     n = FILE_READ_CHUNK;
@@ -271,7 +399,8 @@ static int file_g_read( lua_State* L, int n, int16_t end_char )
   if(end_char < 0 || end_char >255)
     end_char = EOF;
 
-  if(!file_fd)
+
+  if(!fd)
     return luaL_error(L, "open a file first");
 
   char *p;
@@ -285,16 +414,20 @@ static int file_g_read( lua_State* L, int n, int16_t end_char )
     p = alloca(n);
   }
 
-  n = vfs_read(file_fd, p, n);
+  n = vfs_read(fd, p, n);
   // bypass search if no end character provided
-  for (i = end_char != EOF ? 0 : n; i < n; ++i)
-    if (p[i] == end_char)
-    {
-      ++i;
-      break;
-    }
+  if (n > 0 && end_char != EOF) {
+    for (i = 0; i < n; ++i)
+      if (p[i] == end_char)
+      {
+        ++i;
+        break;
+      }
+  } else {
+    i = n;
+  }
 
-  if (i == 0) {
+  if (i == 0 || n == VFS_RES_ERR) {
     if (heap_mem) {
       luaM_free(L, heap_mem);
       heap_mem = NULL;
@@ -302,7 +435,7 @@ static int file_g_read( lua_State* L, int n, int16_t end_char )
     return 0;
   }
 
-  vfs_lseek(file_fd, -(n - i), VFS_SEEK_CUR);
+  vfs_lseek(fd, -(n - i), VFS_SEEK_CUR);
   lua_pushlstring(L, p, i);
   if (heap_mem) {
     luaM_free(L, heap_mem);
@@ -320,36 +453,43 @@ static int file_read( lua_State* L )
   unsigned need_len = FILE_READ_CHUNK;
   int16_t end_char = EOF;
   size_t el;
-  if( lua_type( L, 1 ) == LUA_TNUMBER )
+
+  GET_FILE_OBJ;
+
+  if( lua_type( L, argpos ) == LUA_TNUMBER )
   {
-    need_len = ( unsigned )luaL_checkinteger( L, 1 );
+    need_len = ( unsigned )luaL_checkinteger( L, argpos );
   }
-  else if(lua_isstring(L, 1))
+  else if(lua_isstring(L, argpos))
   {
-    const char *end = luaL_checklstring( L, 1, &el );
+    const char *end = luaL_checklstring( L, argpos, &el );
     if(el!=1){
       return luaL_error( L, "wrong arg range" );
     }
     end_char = (int16_t)end[0];
   }
 
-  return file_g_read(L, need_len, end_char);
+  return file_g_read(L, need_len, end_char, fd);
 }
 
 // Lua: readline()
 static int file_readline( lua_State* L )
 {
-  return file_g_read(L, FILE_READ_CHUNK, '\n');
+  GET_FILE_OBJ;
+
+  return file_g_read(L, LUAL_BUFFERSIZE, '\n', fd);
 }
 
 // Lua: write("string")
 static int file_write( lua_State* L )
 {
-  if(!file_fd)
+  GET_FILE_OBJ;
+
+  if(!fd)
     return luaL_error(L, "open a file first");
   size_t l, rl;
-  const char *s = luaL_checklstring(L, 1, &l);
-  rl = vfs_write(file_fd, s, l);
+  const char *s = luaL_checklstring(L, argpos, &l);
+  rl = vfs_write(fd, s, l);
   if(rl==l)
     lua_pushboolean(L, 1);
   else
@@ -360,13 +500,15 @@ static int file_write( lua_State* L )
 // Lua: writeline("string")
 static int file_writeline( lua_State* L )
 {
-  if(!file_fd)
+  GET_FILE_OBJ;
+
+  if(!fd)
     return luaL_error(L, "open a file first");
   size_t l, rl;
-  const char *s = luaL_checklstring(L, 1, &l);
-  rl = vfs_write(file_fd, s, l);
+  const char *s = luaL_checklstring(L, argpos, &l);
+  rl = vfs_write(fd, s, l);
   if(rl==l){
-    rl = vfs_write(file_fd, "\n", 1);
+    rl = vfs_write(fd, "\n", 1);
     if(rl==1)
       lua_pushboolean(L, 1);
     else
@@ -441,6 +583,20 @@ static int file_vol_umount( lua_State *L )
 }
 
 
+static const LUA_REG_TYPE file_obj_map[] =
+{
+  { LSTRKEY( "close" ),     LFUNCVAL( file_close ) },
+  { LSTRKEY( "read" ),      LFUNCVAL( file_read ) },
+  { LSTRKEY( "readline" ),  LFUNCVAL( file_readline ) },
+  { LSTRKEY( "write" ),     LFUNCVAL( file_write ) },
+  { LSTRKEY( "writeline" ), LFUNCVAL( file_writeline ) },
+  { LSTRKEY( "seek" ),      LFUNCVAL( file_seek ) },
+  { LSTRKEY( "flush" ),     LFUNCVAL( file_flush ) },
+  { LSTRKEY( "__gc" ),      LFUNCVAL( file_obj_free ) },
+  { LSTRKEY( "__index" ),   LROVAL( file_obj_map ) },
+  { LNILKEY, LNILVAL }
+};
+
 static const LUA_REG_TYPE file_vol_map[] =
 {
   { LSTRKEY( "umount" ),   LFUNCVAL( file_vol_umount )},
@@ -471,6 +627,7 @@ static const LUA_REG_TYPE file_map[] = {
   { LSTRKEY( "exists" ),    LFUNCVAL( file_exists ) },  
   { LSTRKEY( "fsinfo" ),    LFUNCVAL( file_fsinfo ) },
   { LSTRKEY( "on" ),        LFUNCVAL( file_on ) },
+  { LSTRKEY( "stat" ),      LFUNCVAL( file_stat ) },
 #ifdef BUILD_FATFS
   { LSTRKEY( "mount" ),     LFUNCVAL( file_mount ) },
   { LSTRKEY( "chdir" ),     LFUNCVAL( file_chdir ) },
@@ -480,6 +637,7 @@ static const LUA_REG_TYPE file_map[] = {
 
 int luaopen_file( lua_State *L ) {
   luaL_rometatable( L, "file.vol",  (void *)file_vol_map );
+  luaL_rometatable( L, "file.obj",  (void *)file_obj_map );
   return 0;
 }
 

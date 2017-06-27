@@ -2,6 +2,8 @@
 #include "platform.h"
 #include "spiffs.h"
 
+#include "spiffs_nucleus.h"
+
 spiffs fs;
 
 #define LOG_PAGE_SIZE       	256
@@ -10,9 +12,9 @@ spiffs fs;
 #define MIN_BLOCKS_FS		4
   
 static u8_t spiffs_work_buf[LOG_PAGE_SIZE*2];
-static u8_t spiffs_fds[32*4];
+static u8_t spiffs_fds[sizeof(spiffs_fd) * SPIFFS_MAX_OPEN_FILES];
 #if SPIFFS_CACHE
-static u8_t spiffs_cache[(LOG_PAGE_SIZE+32)*2];
+static u8_t myspiffs_cache[(LOG_PAGE_SIZE+32)*2];
 #endif
 
 static s32_t my_spiffs_read(u32_t addr, u32_t size, u8_t *dst) {
@@ -51,7 +53,7 @@ static bool myspiffs_set_location(spiffs_config *cfg, int align, int offset, int
 #ifdef SPIFFS_FIXED_LOCATION
   cfg->phys_addr = (SPIFFS_FIXED_LOCATION + block_size - 1) & ~(block_size-1);
 #else
-  cfg->phys_addr = ( u32_t )platform_flash_get_first_free_block_address( NULL ) + offset; 
+  cfg->phys_addr = ( u32_t )platform_flash_get_first_free_block_address( NULL ) + offset;
   cfg->phys_addr = (cfg->phys_addr + align - 1) & ~(align - 1);
 #endif
 #ifdef SPIFFS_SIZE_1M_BOUNDARY
@@ -168,8 +170,8 @@ static bool myspiffs_mount_internal(bool force_mount) {
     spiffs_fds,
     sizeof(spiffs_fds),
 #if SPIFFS_CACHE
-    spiffs_cache,
-    sizeof(spiffs_cache),
+    myspiffs_cache,
+    sizeof(myspiffs_cache),
 #else
     0, 0,
 #endif
@@ -247,17 +249,12 @@ static uint32_t myspiffs_vfs_size( const struct vfs_file *fd );
 static sint32_t myspiffs_vfs_ferrno( const struct vfs_file *fd );
 
 static sint32_t  myspiffs_vfs_closedir( const struct vfs_dir *dd );
-static vfs_item *myspiffs_vfs_readdir( const struct vfs_dir *dd );
-
-static void       myspiffs_vfs_iclose( const struct vfs_item *di );
-static uint32_t   myspiffs_vfs_isize( const struct vfs_item *di );
-//static const struct tm *myspiffs_vfs_time( const struct vfs_item *di );
-static const char *myspiffs_vfs_name( const struct vfs_item *di );
+static sint32_t  myspiffs_vfs_readdir( const struct vfs_dir *dd, struct vfs_stat *buf );
 
 static vfs_vol  *myspiffs_vfs_mount( const char *name, int num );
 static vfs_file *myspiffs_vfs_open( const char *name, const char *mode );
 static vfs_dir  *myspiffs_vfs_opendir( const char *name );
-static vfs_item *myspiffs_vfs_stat( const char *name );
+static sint32_t  myspiffs_vfs_stat( const char *name, struct vfs_stat *buf );
 static sint32_t  myspiffs_vfs_remove( const char *name );
 static sint32_t  myspiffs_vfs_rename( const char *oldname, const char *newname );
 static sint32_t  myspiffs_vfs_fsinfo( uint32_t *total, uint32_t *used );
@@ -300,18 +297,6 @@ static vfs_file_fns myspiffs_file_fns = {
   .ferrno    = myspiffs_vfs_ferrno
 };
 
-static vfs_item_fns myspiffs_item_fns = {
-  .close     = myspiffs_vfs_iclose,
-  .size      = myspiffs_vfs_isize,
-  .time      = NULL,
-  .name      = myspiffs_vfs_name,
-  .is_dir    = NULL,
-  .is_rdonly = NULL,
-  .is_hidden = NULL,
-  .is_sys    = NULL,
-  .is_arch   = NULL
-};
-
 static vfs_dir_fns myspiffs_dd_fns = {
   .close     = myspiffs_vfs_closedir,
   .readdir   = myspiffs_vfs_readdir
@@ -330,36 +315,6 @@ struct myvfs_dir {
   struct vfs_dir vfs_dir;
   spiffs_DIR d;
 };
-
-struct myvfs_stat {
-  struct vfs_item vfs_item;
-  spiffs_stat s;
-};
-
-
-// ---------------------------------------------------------------------------
-// stat functions
-//
-#define GET_STAT_S(descr) \
-  const struct myvfs_stat *mystat = (const struct myvfs_stat *)descr; \
-  spiffs_stat *s = (spiffs_stat *)&(mystat->s);
-
-static void myspiffs_vfs_iclose( const struct vfs_item *di ) {
-  // free descriptor memory
-  c_free( (void *)di );
-}
-
-static uint32_t myspiffs_vfs_isize( const struct vfs_item *di ) {
-  GET_STAT_S(di);
-
-  return s->size;
-}
-
-static const char *myspiffs_vfs_name( const struct vfs_item *di ) {
-  GET_STAT_S(di);
-
-  return s->name;
-}
 
 
 // ---------------------------------------------------------------------------
@@ -388,25 +343,22 @@ static sint32_t myspiffs_vfs_closedir( const struct vfs_dir *dd ) {
   c_free( (void *)dd );
 }
 
-static vfs_item *myspiffs_vfs_readdir( const struct vfs_dir *dd ) {
+static sint32_t myspiffs_vfs_readdir( const struct vfs_dir *dd, struct vfs_stat *buf ) {
   GET_DIR_D(dd);
-  struct myvfs_stat *stat;
   struct spiffs_dirent dirent;
 
-  if (stat = c_malloc( sizeof( struct myvfs_stat ) )) {
-    if (SPIFFS_readdir( d, &dirent )) {
-      stat->vfs_item.fs_type = VFS_FS_FATFS;
-      stat->vfs_item.fns     = &myspiffs_item_fns;
-      // copy entries to vfs' directory item
-      stat->s.size = dirent.size;
-      c_strncpy( stat->s.name, dirent.name, SPIFFS_OBJ_NAME_LEN );
-      return (vfs_item *)stat;
-    } else {
-      c_free( stat );
-    }
+  if (SPIFFS_readdir( d, &dirent )) {
+    c_memset( buf, 0, sizeof( struct vfs_stat ) );
+
+    // copy entries to  item
+    // fill in supported stat entries
+    c_strncpy( buf->name, dirent.name, FS_OBJ_NAME_LEN+1 );
+    buf->name[FS_OBJ_NAME_LEN] = '\0';
+    buf->size = dirent.size;
+    return VFS_RES_OK;
   }
 
-  return NULL;
+  return VFS_RES_ERR;
 }
 
 
@@ -431,13 +383,17 @@ static sint32_t myspiffs_vfs_close( const struct vfs_file *fd ) {
 static sint32_t myspiffs_vfs_read( const struct vfs_file *fd, void *ptr, size_t len ) {
   GET_FILE_FH(fd);
 
-  return SPIFFS_read( &fs, fh, ptr, len );
+  sint32_t n = SPIFFS_read( &fs, fh, ptr, len );
+
+  return n >= 0 ? n : VFS_RES_ERR;
 }
 
 static sint32_t myspiffs_vfs_write( const struct vfs_file *fd, const void *ptr, size_t len ) {
   GET_FILE_FH(fd);
 
-  return SPIFFS_write( &fs, fh, (void *)ptr, len );
+  sint32_t n = SPIFFS_write( &fs, fh, (void *)ptr, len );
+
+  return n >= 0 ? n : VFS_RES_ERR;
 }
 
 static sint32_t myspiffs_vfs_lseek( const struct vfs_file *fd, sint32_t off, int whence ) {
@@ -457,7 +413,8 @@ static sint32_t myspiffs_vfs_lseek( const struct vfs_file *fd, sint32_t off, int
     break;
   }
 
-  return SPIFFS_lseek( &fs, fh, off, spiffs_whence );
+  sint32_t res = SPIFFS_lseek( &fs, fh, off, spiffs_whence );
+  return res >= 0 ? res : VFS_RES_ERR;
 }
 
 static sint32_t myspiffs_vfs_eof( const struct vfs_file *fd ) {
@@ -553,20 +510,21 @@ static vfs_dir *myspiffs_vfs_opendir( const char *name ){
   return NULL;
 }
 
-static vfs_item *myspiffs_vfs_stat( const char *name ) {
-  struct myvfs_stat *s;
+static sint32_t myspiffs_vfs_stat( const char *name, struct vfs_stat *buf ) {
+  spiffs_stat stat;
 
-  if (s = (struct myvfs_stat *)c_malloc( sizeof( struct myvfs_stat ) )) {
-    if (0 <= SPIFFS_stat( &fs, name, &(s->s) )) {
-      s->vfs_item.fs_type = VFS_FS_SPIFFS;
-      s->vfs_item.fns     = &myspiffs_item_fns;
-      return (vfs_item *)s;
-    } else {
-      c_free( s );
-    }
+  if (0 <= SPIFFS_stat( &fs, name, &stat )) {
+    c_memset( buf, 0, sizeof( struct vfs_stat ) );
+
+    // fill in supported stat entries
+    c_strncpy( buf->name, stat.name, FS_OBJ_NAME_LEN+1 );
+    buf->name[FS_OBJ_NAME_LEN] = '\0';
+    buf->size = stat.size;
+
+    return VFS_RES_OK;
+  } else {
+    return VFS_RES_ERR;
   }
-
-  return NULL;
 }
 
 static sint32_t myspiffs_vfs_remove( const char *name ) {

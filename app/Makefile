@@ -25,6 +25,7 @@ SUBDIRS= 					\
 	user 					\
 	driver 					\
 	pcm					\
+	mbedtls 				\
 	platform 				\
 	libc 					\
 	lua 					\
@@ -37,7 +38,6 @@ SUBDIRS= 					\
 	smart 					\
 	modules 				\
 	spiffs 					\
-	cjson 					\
 	crypto 					\
 	dhtlib					\
 	tsl2561					\
@@ -45,7 +45,11 @@ SUBDIRS= 					\
 	http					\
 	fatfs					\
 	esp-gdbstub				\
-	websocket
+	websocket				\
+	swTimer					\
+	misc					\
+	pm						\
+	
 
 endif # } PDIR
 
@@ -86,15 +90,19 @@ COMPONENTS_eagle.app.v6 = 			\
 	smart/smart.a 				\
 	spiffs/spiffs.a 			\
 	fatfs/libfatfs.a			\
-	cjson/libcjson.a 			\
 	crypto/libcrypto.a 			\
 	dhtlib/libdhtlib.a 			\
 	tsl2561/tsl2561lib.a			\
 	http/libhttp.a				\
+	pm/libpm.a					\
 	websocket/libwebsocket.a		\
 	esp-gdbstub/libgdbstub.a		\
 	net/libnodemcu_net.a			\
+	mbedtls/libmbedtls.a      \
 	modules/libmodules.a			\
+	swTimer/libswtimer.a			\
+	misc/libmisc.a					\
+	
 
 # Inspect the modules library and work out which modules need to be linked.
 # For each enabled module, a symbol name of the form XYZ_module_selected is
@@ -113,6 +121,7 @@ LINKFLAGS_eagle.app.v6 = 			\
 	-Wl,-static 				\
 	$(addprefix -u , $(SELECTED_MODULE_SYMS)) \
 	-Wl,--start-group 			\
+	-lmain 					\
 	-lc 					\
 	-lgcc 					\
 	-lhal 					\
@@ -121,10 +130,9 @@ LINKFLAGS_eagle.app.v6 = 			\
 	-lnet80211 				\
 	-lwpa 					\
 	-lwpa2					\
-	-lmain 					\
 	-lsmartconfig 				\
-	-lssl 					\
 	-lcrypto				\
+	-lwps					\
 	$(DEP_LIBS_eagle.app.v6) 		\
 	-Wl,--end-group 			\
 	-lm
@@ -154,6 +162,7 @@ CONFIGURATION_DEFINES =	-D__ets__ 		\
 			-DLWIP_OPEN_SRC 	\
 			-DPBUF_RSV_FOR_WLAN 	\
 			-DEBUF_LWIP		\
+			-DMBEDTLS_USER_CONFIG_FILE=\"user_mbedtls.h\"  \
 
 DEFINES += 					\
 	$(UNIVERSAL_TARGET_DEFINES) 		\

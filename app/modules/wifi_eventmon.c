@@ -17,98 +17,6 @@
 
 #if defined(LUA_USE_MODULES_WIFI)
 
-#ifdef WIFI_STATION_STATUS_MONITOR_ENABLE
-
-//variables for wifi event monitor
-static int wifi_station_status_cb_ref[6] = {[0 ... 6-1] = LUA_NOREF};
-static os_timer_t wifi_sta_status_timer;
-static uint8 prev_wifi_status=0;
-
-// wifi.sta.eventMonStop()
-void wifi_station_event_mon_stop(lua_State* L)
-{
-  os_timer_disarm(&wifi_sta_status_timer);
-  if(lua_isstring(L,1))
-  {
-    int i;
-    for (i=0; i<6; i++)
-    {
-      unregister_lua_cb(L, &wifi_station_status_cb_ref[i]);
-    }
-  }
-  return;
-}
-
-static void wifi_status_cb(int arg)
-{
-  lua_State* L = lua_getstate();
-  if (wifi_get_opmode() == SOFTAP_MODE)
-  {
-    os_timer_disarm(&wifi_sta_status_timer);
-    return;
-  }
-  int wifi_status = wifi_station_get_connect_status();
-  if (wifi_status != prev_wifi_status)
-  {
-    if(wifi_station_status_cb_ref[wifi_status] != LUA_NOREF)
-    {
-      lua_rawgeti(L, LUA_REGISTRYINDEX, wifi_station_status_cb_ref[wifi_status]);
-      lua_pushnumber(L, prev_wifi_status);
-      lua_call(L, 1, 0);
-    }
-  }
-  prev_wifi_status = wifi_status;
-}
-
-// wifi.sta.eventMonReg()
-int wifi_station_event_mon_reg(lua_State* L)
-{
-  uint8 id=(uint8)luaL_checknumber(L, 1);
-  if ((id > 5)) // verify user specified a valid wifi status
-  {
-    return luaL_error( L, "valid wifi status:0-5" );
-  }
-
-  if (lua_type(L, 2) == LUA_TFUNCTION || lua_type(L, 2) == LUA_TLIGHTFUNCTION) //check if 2nd item on stack is a function
-  {
-    lua_pushvalue(L, 2); //push function to top of stack
-    register_lua_cb(L, &wifi_station_status_cb_ref[id]);//pop function from top of the stack, register it in the LUA_REGISTRY, then assign returned lua_ref to wifi_station_status_cb_ref[id]
-  }
-  else
-  {
-    unregister_lua_cb(L, &wifi_station_status_cb_ref[id]); // unregister user's callback
-  }
-  return 0;
-}
-
-
-// wifi.sta.eventMonStart()
-int wifi_station_event_mon_start(lua_State* L)
-{
-  if(wifi_get_opmode() == SOFTAP_MODE) //Verify ESP is in either Station mode or StationAP mode
-  {
-    return luaL_error( L, "Can't monitor in SOFTAP mode" );
-  }
-  if (wifi_station_status_cb_ref[0] == LUA_NOREF && wifi_station_status_cb_ref[1] == LUA_NOREF &&
-      wifi_station_status_cb_ref[2] == LUA_NOREF && wifi_station_status_cb_ref[3] == LUA_NOREF &&
-      wifi_station_status_cb_ref[4] == LUA_NOREF && wifi_station_status_cb_ref[5] == LUA_NOREF )
-  { //verify user has registered callbacks
-    return luaL_error( L, "No callbacks defined" );
-  }
-  uint32 ms = 150; //set default timer interval
-  if(lua_isnumber(L, 1)) // check if user has specified a different timer interval
-  {
-    ms=luaL_checknumber(L, 1); // retrieve user-defined interval
-  }
-
-  os_timer_disarm(&wifi_sta_status_timer);
-  os_timer_setfn(&wifi_sta_status_timer, (os_timer_func_t *)wifi_status_cb, NULL);
-  os_timer_arm(&wifi_sta_status_timer, ms, 1);
-  return 0;
-}
-
-#endif
-
 #ifdef WIFI_SDK_EVENT_MONITOR_ENABLE
 
 //variables for wifi event monitor
@@ -124,7 +32,7 @@ static evt_queue_t *wifi_event_queue_tail; //pointer to end of queue
 static int wifi_event_cb_ref[EVENT_MAX+1] = { [0 ... EVENT_MAX] = LUA_NOREF}; //holds references to registered Lua callbacks
 
 // wifi.eventmon.register()
-static int wifi_event_monitor_register(lua_State* L)
+int wifi_event_monitor_register(lua_State* L)
 {
   uint8 id = (uint8)luaL_checknumber(L, 1);
   if ( id > EVENT_MAX ) //Check if user is trying to register a callback for a valid event.
@@ -152,9 +60,10 @@ static void wifi_event_monitor_handle_event_cb(System_Event_t *evt)
 
   if((wifi_event_cb_ref[evt->event] != LUA_NOREF) || ((wifi_event_cb_ref[EVENT_MAX] != LUA_NOREF) &&
       !(evt->event == EVENT_STAMODE_CONNECTED || evt->event == EVENT_STAMODE_DISCONNECTED ||
-          evt->event == EVENT_STAMODE_AUTHMODE_CHANGE||evt->event==EVENT_STAMODE_GOT_IP ||
-          evt->event == EVENT_STAMODE_DHCP_TIMEOUT||evt->event==EVENT_SOFTAPMODE_STACONNECTED ||
-          evt->event == EVENT_SOFTAPMODE_STADISCONNECTED||evt->event==EVENT_SOFTAPMODE_PROBEREQRECVED)))
+          evt->event == EVENT_STAMODE_AUTHMODE_CHANGE || evt->event == EVENT_STAMODE_GOT_IP ||
+          evt->event == EVENT_STAMODE_DHCP_TIMEOUT || evt->event == EVENT_SOFTAPMODE_STACONNECTED ||
+          evt->event == EVENT_SOFTAPMODE_STADISCONNECTED || evt->event == EVENT_SOFTAPMODE_PROBEREQRECVED ||
+          evt->event == EVENT_OPMODE_CHANGED)))
   {
     evt_queue_t *temp = (evt_queue_t*)c_malloc(sizeof(evt_queue_t)); //allocate memory for new queue item
     temp->evt = (System_Event_t*)c_malloc(sizeof(System_Event_t)); //allocate memory to hold event structure
@@ -277,7 +186,16 @@ static void wifi_event_monitor_process_event_queue(task_param_t param, uint8 pri
           evt->event_info.ap_probereqrecved.rssi);
       break;
 
-    default://if event is not implemented, push table with userdata containing event data
+    case EVENT_OPMODE_CHANGED:
+      EVENT_DBG("\n\tOPMODE_CHANGED\n");
+      wifi_add_int_field(L, "old_mode", evt->event_info.opmode_changed.old_opmode);
+      wifi_add_int_field(L, "new_mode", evt->event_info.opmode_changed.new_opmode);
+      EVENT_DBG("\topmode: %u -> %u\n",
+          evt->event_info.opmode_changed.old_opmode,
+          evt->event_info.opmode_changed.new_opmode);
+      break;
+
+    default://if event is not implemented, return event id
       EVENT_DBG("\n\tswitch/case default\n");
       wifi_add_sprintf_field(L, "info", "event %u not implemented", evt->event);
       break;
@@ -348,6 +266,7 @@ const LUA_REG_TYPE wifi_event_monitor_map[] =
   { LSTRKEY( "AP_STACONNECTED" ),     LNUMVAL( EVENT_SOFTAPMODE_STACONNECTED ) },
   { LSTRKEY( "AP_STADISCONNECTED" ),  LNUMVAL( EVENT_SOFTAPMODE_STADISCONNECTED ) },
   { LSTRKEY( "AP_PROBEREQRECVED" ),   LNUMVAL( EVENT_SOFTAPMODE_PROBEREQRECVED ) },
+  { LSTRKEY( "WIFI_MODE_CHANGED" ),   LNUMVAL( EVENT_OPMODE_CHANGED ) },
   { LSTRKEY( "EVENT_MAX" ),           LNUMVAL( EVENT_MAX ) },
 #ifdef WIFI_EVENT_MONITOR_DISCONNECT_REASON_LIST_ENABLE
   { LSTRKEY( "reason" ),              LROVAL( wifi_event_monitor_reason_map ) },

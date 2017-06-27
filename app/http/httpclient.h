@@ -10,16 +10,18 @@
 #ifndef __HTTPCLIENT_H__
 #define __HTTPCLIENT_H__
 
-#if defined(GLOBAL_DEBUG_ON)
+static const char log_prefix[] = "HTTP client: ";
+
+#if defined(DEVELOP_VERSION)
   #define HTTPCLIENT_DEBUG_ON
 #endif
 #if defined(HTTPCLIENT_DEBUG_ON)
-  #define HTTPCLIENT_DEBUG(format, ...) dbg_printf("HTTP client: "format"\n", ##__VA_ARGS__)
+  #define HTTPCLIENT_DEBUG(format, ...) dbg_printf("%s"format"\n", log_prefix, ##__VA_ARGS__)
 #else
-  #define HTTPCLIENT_DEBUG(format, ...)
+  #define HTTPCLIENT_DEBUG(...)
 #endif
 #if defined(NODE_ERROR)
-  #define HTTPCLIENT_ERR(format, ...) NODE_ERR("HTTP client: "format"\n", ##__VA_ARGS__)
+  #define HTTPCLIENT_ERR(format, ...) NODE_ERR("%s"format"\n", log_prefix, ##__VA_ARGS__)
 #else
   #define HTTPCLIENT_ERR(...)
 #endif
@@ -51,7 +53,7 @@
  * A successful request corresponds to an HTTP status code of 200 (OK).
  * More info at http://en.wikipedia.org/wiki/List_of_HTTP_status_codes
  */
-typedef void (* http_callback_t)(char * response_body, int http_status, char * full_response);
+typedef void (* http_callback_t)(char * response_body, int http_status, char ** full_response_p);
 
 /*
  * Call this function to skip URL parsing if the arguments are already in separate variables.

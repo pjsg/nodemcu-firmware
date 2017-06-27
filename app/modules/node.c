@@ -53,6 +53,9 @@ static int node_deepsleep( lua_State* L )
     else
       system_deep_sleep_set_option( option );
   }
+  bool instant = false;
+  if (lua_isnumber(L, 3))
+    instant = lua_tointeger(L, 3);
   // Set deleep time, skip if nil
   if ( lua_isnumber(L, 1) )
   {
@@ -61,24 +64,46 @@ static int node_deepsleep( lua_State* L )
     if ( us < 0 )
       return luaL_error( L, "wrong arg range" );
     else
-      system_deep_sleep( us );
+    {
+      if (instant)
+        system_deep_sleep_instant(us);
+      else
+        system_deep_sleep( us );
+    }
   }
   return 0;
 }
 
-// Lua: dsleep_set_options
-// Combined to dsleep( us, option )
-// static int node_deepsleep_setoption( lua_State* L )
-// {
-//   s32 option;
-//   option = luaL_checkinteger( L, 1 );
-//   if ( option < 0 || option > 4)
-//     return luaL_error( L, "wrong arg range" );
-//   else
-//    deep_sleep_set_option( option );
-//   return 0;
-// }
-// Lua: info()
+
+#ifdef PMSLEEP_ENABLE
+#include "pmSleep.h"
+
+int node_sleep_resume_cb_ref= LUA_NOREF;
+void node_sleep_resume_cb(void)
+{
+  PMSLEEP_DBG("START");
+  pmSleep_execute_lua_cb(&node_sleep_resume_cb_ref);
+  PMSLEEP_DBG("END");
+}
+
+// Lua: node.sleep(table)
+static int node_sleep( lua_State* L )
+{
+  pmSleep_INIT_CFG(cfg);
+  cfg.sleep_mode=LIGHT_SLEEP_T;
+
+  if(lua_istable(L, 1)){
+    pmSleep_parse_table_lua(L, 1, &cfg, NULL, &node_sleep_resume_cb_ref);
+  }
+  else{
+    return luaL_argerror(L, 1, "must be table");
+  }
+
+  cfg.resume_cb_ptr = &node_sleep_resume_cb;
+  pmSleep_suspend(&cfg);
+  return 0;
+}
+#endif //PMSLEEP_ENABLE
 
 static int node_info( lua_State* L )
 {
@@ -87,11 +112,7 @@ static int node_info( lua_State* L )
   lua_pushinteger(L, NODE_VERSION_REVISION);
   lua_pushinteger(L, system_get_chip_id());   // chip id
   lua_pushinteger(L, spi_flash_get_id());     // flash id
-#if defined(FLASH_SAFE_API)
-  lua_pushinteger(L, flash_safe_get_size_byte() / 1024);  // flash size in KB
-#else
   lua_pushinteger(L, flash_rom_get_size_byte() / 1024);  // flash size in KB
-#endif // defined(FLASH_SAFE_API)
   lua_pushinteger(L, flash_rom_get_mode());
   lua_pushinteger(L, flash_rom_get_speed());
   return 8;
@@ -129,11 +150,7 @@ static int node_flashsize( lua_State* L )
   {
     flash_rom_set_size_byte(luaL_checkinteger(L, 1));
   }
-#if defined(FLASH_SAFE_API)
-  uint32_t sz = flash_safe_get_size_byte();
-#else
   uint32_t sz = flash_rom_get_size_byte();
-#endif // defined(FLASH_SAFE_API)
   lua_pushinteger( L, sz );
   return 1;
 }
@@ -467,6 +484,79 @@ static int node_osprint( lua_State* L )
   return 0;  
 }
 
+int node_random_range(int l, int u) {
+  // The range is the number of different values to return
+  unsigned int range = u + 1 - l;
+
+  // If this is very large then use simpler code
+  if (range >= 0x7fffffff) {
+    unsigned int v;
+
+    // This cannot loop more than half the time
+    while ((v = os_random()) >= range) {
+    }
+
+    // Now v is in the range [0, range)
+    return v + l;
+  }
+
+  // Easy case, with only one value, we know the result
+  if (range == 1) {
+    return l;
+  }
+
+  // Another easy case -- uniform 32-bit
+  if (range == 0) {
+    return os_random();
+  }
+
+  // Now we have to figure out what a large multiple of range is
+  // that just fits into 32 bits.
+  // The limit will be less than 1 << 32 by some amount (not much)
+  uint32_t limit = ((0x80000000 / ((range + 1) >> 1)) - 1) * range;
+
+  uint32_t v;
+
+  while ((v = os_random()) >= limit) {
+  }
+
+  // Now v is uniformly distributed in [0, limit) and limit is a multiple of range
+
+  return (v % range) + l;
+}
+
+static int node_random (lua_State *L) {
+  int u;
+  int l;
+
+  switch (lua_gettop(L)) {  /* check number of arguments */
+    case 0: {  /* no arguments */
+#ifdef LUA_NUMBER_INTEGRAL
+      lua_pushnumber(L, 0);  /* Number between 0 and 1 - always 0 with ints */
+#else
+      lua_pushnumber(L, (lua_Number)os_random() / (lua_Number)(1LL << 32));
+#endif
+      return 1;
+    }
+    case 1: {  /* only upper limit */
+      l = 1;
+      u = luaL_checkint(L, 1);
+      break;
+    }
+    case 2: {  /* lower and upper limits */
+      l = luaL_checkint(L, 1);
+      u = luaL_checkint(L, 2);
+      break;
+    }
+    default: 
+      return luaL_error(L, "wrong number of arguments");
+  }
+  luaL_argcheck(L, l<=u, 2, "interval is empty");
+  lua_pushnumber(L, node_random_range(l, u));  /* int between `l' and `u' */
+  return 1;
+}
+
+
 // Module function map
 
 static const LUA_REG_TYPE node_egc_map[] = {
@@ -489,6 +579,10 @@ static const LUA_REG_TYPE node_map[] =
 {
   { LSTRKEY( "restart" ), LFUNCVAL( node_restart ) },
   { LSTRKEY( "dsleep" ), LFUNCVAL( node_deepsleep ) },
+#ifdef PMSLEEP_ENABLE
+  { LSTRKEY( "sleep" ), LFUNCVAL( node_sleep ) },
+  PMSLEEP_INT_MAP,
+#endif
   { LSTRKEY( "info" ), LFUNCVAL( node_info ) },
   { LSTRKEY( "chipid" ), LFUNCVAL( node_chipid ) },
   { LSTRKEY( "flashid" ), LFUNCVAL( node_flashid ) },
@@ -504,6 +598,7 @@ static const LUA_REG_TYPE node_map[] =
   { LSTRKEY( "setcpufreq" ), LFUNCVAL( node_setcpufreq) },
   { LSTRKEY( "bootreason" ), LFUNCVAL( node_bootreason) },
   { LSTRKEY( "restore" ), LFUNCVAL( node_restore) },
+  { LSTRKEY( "random" ), LFUNCVAL( node_random) },
 #ifdef LUA_OPTIMIZE_DEBUG
   { LSTRKEY( "stripdebug" ), LFUNCVAL( node_stripdebug ) },
 #endif
