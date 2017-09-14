@@ -34,6 +34,10 @@
 #ifndef SPIFFS_CHECK_DBG
 #define SPIFFS_CHECK_DBG(...) //dbg_printf(__VA_ARGS__)
 #endif
+// Set spiffs debug output call for all api invocations.
+#ifndef SPIFFS_API_DBG
+#define SPIFFS_API_DBG(_f, ...) //printf(_f, ## __VA_ARGS__)
+#endif
 
 // Defines spiffs debug print formatters
 // some general signed number
