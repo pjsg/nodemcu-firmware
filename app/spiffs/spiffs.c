@@ -61,10 +61,10 @@ static bool myspiffs_set_location(spiffs_config *cfg, int align, int offset, int
 #else
   cfg->phys_size = (INTERNAL_FLASH_SIZE - ( ( u32_t )cfg->phys_addr )) & ~(block_size - 1);
 #endif
+  cfg->log_block_size = block_size; 
   if ((int) cfg->phys_size < 0) {
     return FALSE;
   }
-  cfg->log_block_size = block_size; 
 
   return (cfg->phys_size / block_size) >= MIN_BLOCKS_FS;
 }
@@ -142,17 +142,22 @@ static bool myspiffs_find_cfg(spiffs_config *cfg, bool force_create) {
 #endif
   }
 
+  bool rc;
   // No existing file system -- set up for a format
   if (INTERNAL_FLASH_SIZE >= 700000) {
-    myspiffs_set_cfg(cfg, 0x10000, 0x10000, TRUE);
+    rc = myspiffs_set_cfg(cfg, 0x10000, 0x10000, TRUE);
 #ifndef SPIFFS_MAX_FILESYSTEM_SIZE
     if (cfg->phys_size < 400000) {
       // Don't waste so much in alignment
-      myspiffs_set_cfg(cfg, LOG_BLOCK_SIZE, LOG_BLOCK_SIZE * 4, TRUE);
+      rc = myspiffs_set_cfg(cfg, LOG_BLOCK_SIZE, LOG_BLOCK_SIZE * 4, TRUE);
     }
 #endif
   } else {
-    myspiffs_set_cfg(cfg, LOG_BLOCK_SIZE, 0, TRUE);
+    rc = myspiffs_set_cfg(cfg, LOG_BLOCK_SIZE, 0, TRUE);
+  }
+  if (!rc && force_create) {
+    // Insufficient space
+    NODE_ERR("Unable to create FS: block_size 0x%x, space available 0x%x\n", cfg->log_block_size, cfg->phys_size);
   }
 
 #ifdef SPIFFS_MAX_FILESYSTEM_SIZE
