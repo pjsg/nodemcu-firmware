@@ -298,6 +298,17 @@ static int wifi_getphymode( lua_State* L )
   return 1;
 }
 
+// Lua: wifi.setmaxtxpower()
+static int wifi_setmaxtxpower( lua_State* L )
+{
+  unsigned power;
+  power = luaL_checkinteger( L, 1 );
+  luaL_argcheck(L, (power > 0 && power < 83), 1, "tx power out of range (0->82)");
+
+  system_phy_set_max_tpw( (uint8_t) power);
+  return 1;
+}
+
 #ifdef PMSLEEP_ENABLE
 /* Begin WiFi suspend functions*/
 #include "pmSleep.h"
@@ -1796,6 +1807,7 @@ static const LUA_REG_TYPE wifi_map[] =  {
   { LSTRKEY( "getchannel" ),     LFUNCVAL( wifi_getchannel ) },
   { LSTRKEY( "setphymode" ),     LFUNCVAL( wifi_setphymode ) },
   { LSTRKEY( "getphymode" ),     LFUNCVAL( wifi_getphymode ) },
+  { LSTRKEY( "setmaxtxpower" ),  LFUNCVAL( wifi_setmaxtxpower ) },
 #ifdef PMSLEEP_ENABLE
   { LSTRKEY( "suspend" ),        LFUNCVAL( wifi_suspend ) },
   { LSTRKEY( "resume" ),         LFUNCVAL( wifi_resume ) },
@@ -1811,6 +1823,9 @@ static const LUA_REG_TYPE wifi_map[] =  {
   { LSTRKEY( "ap" ),             LROVAL( wifi_ap_map ) },
 #if defined(WIFI_SDK_EVENT_MONITOR_ENABLE)
   { LSTRKEY( "eventmon" ),       LROVAL( wifi_event_monitor_map ) }, //declared in wifi_eventmon.c
+#endif
+#if defined(LUA_USE_MODULES_WIFI_MONITOR)
+  { LSTRKEY( "monitor" ),        LROVAL( wifi_monitor_map ) }, //declared in wifi_monitor.c
 #endif
   { LSTRKEY( "NULLMODE" ),       LNUMVAL( NULL_MODE ) },
   { LSTRKEY( "STATION" ),        LNUMVAL( STATION_MODE ) },
@@ -1886,6 +1901,9 @@ int luaopen_wifi( lua_State *L )
   }
 #if defined(WIFI_SDK_EVENT_MONITOR_ENABLE)
   wifi_eventmon_init();
+#endif
+#if defined(LUA_USE_MODULES_WIFI_MONITOR)
+  wifi_monitor_init(L);
 #endif
  return 0;
 }
