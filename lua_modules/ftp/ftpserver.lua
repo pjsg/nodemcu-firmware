@@ -26,14 +26,34 @@
  preprocessed for loading as either components in the "fast" Cmodule or as
  LC files in SPIFFS.
 ]]
---luacheck: read globals fast file net node tmr uart wifi FAST_ftp SPIFFS_ftp
+local file, net, wifi, node, table, tmr, pairs, print, pcall, tostring =
+      file, net, wifi, node, table, tmr, pairs, print, pcall, tostring
+local post = node.task.post
+local FTP, cnt = {client = {}}, 0
 
-local FTP, FTPindex = {client = {}}, nil
+-- Local functions
 
-if FAST_ftp then
-  function FTPindex(_, name) return fast.load('ftp-'..name) end
-elseif SPIFFS_ftp then
-  function FTPindex(_, name) return loadfile('ftp-'..name..'.lc') end
+local processCommand    -- function(cxt, sock, data)
+local processBareCmds   -- function(cxt, cmd)
+local processSimpleCmds -- function(cxt, cmd, arg)
+local processDataCmds   -- function(cxt, cmd, arg)
+local dataServer        -- function(cxt, n)
+local ftpDataOpen       -- function(dataSocket)
+
+-- Note these routines all used hoisted locals such as table and debug as
+-- upvals for performance (ROTable lookup is slow on NodeMCU Lua), but
+-- data upvals (e.g. FTP) are explicitly list is -- "upval:" comments.
+
+-- Note that the space between debug and the arglist is there for a reason
+-- so that a simple global edit "   debug(" -> "-- debug(" or v.v. to
+-- toggle debug compiled into the module.
+
+local function debug (fmt, ...) -- upval: cnt (, print, node, tmr)
+  if not FTP.debug then return end
+  if (...) then fmt = fmt:format(...) end
+  print(node.heap(),fmt)
+  cnt = cnt + 1
+  if cnt % 10 then tmr.wdclr() end
 end
 
 if FTPindex then return setmetatable(FTP,{__index=FTPindex}) end
@@ -87,14 +107,12 @@ function FTP.createServer(...)  --[[SPLIT HERE ftp-createServer]]
       local CXN; CXN = {
         validUser = false,
         cmdSocket = sock,
-        debug     = this.debug,
-        FTP       = this,
-        send      = function(rec, cb) -- upval: CXN
-            CXN.debug("Sending: %s", rec)
-            return CXN.cmdSocket:send(rec.."\r\n", cb)
-          end, --- CXN. send()
-        close    = function(socket)   -- upval: CXN
-             CXN.debug("Closing CXN.cmdSocket=%s", tostring(CXN.cmdSocket))
+        send      = function(rec, cb) -- upval: CNX (,debug)
+         -- debug("Sending: %s", rec)
+            return CNX.cmdSocket:send(rec.."\r\n", cb)
+          end, --- send()
+        close    = function(socket) -- upval: client, CNX (,debug, pcall, type)
+         -- debug("Closing CNX.socket=%s, sock=%s", tostring(CNX.socket), tostring(sock))
             for _,s in ipairs{'cmdSocket', 'dataServer', 'dataSocket'} do
                CXN.debug("closing CXN.%s=%s", s, tostring(CXN[s]))
               if type(CXN[s])=='userdata' then
@@ -102,11 +120,11 @@ function FTP.createServer(...)  --[[SPLIT HERE ftp-createServer]]
                 CXN[s]= nil
               end
             end
-            CXN.FTP.client[socket] = nil
-          end -- CXN.close()
+            client[socket] = nil
+          end -- CNX.close()
         }
 
-      local function validateUser(socket, data) -- upval: CXN
+      local function validateUser(socket, data) -- upval: CNX, FTP (, debug, processCommand)
         -- validate the logon and if then switch to processing commands
          CXN.debug("Authorising: %s", data)
         local cmd, arg = data:match('([A-Za-z]+) *([^\r\n]*)')
@@ -119,12 +137,11 @@ function FTP.createServer(...)  --[[SPLIT HERE ftp-createServer]]
                  "331 OK. Password required" or
                  "530 user not found"
 
-        elseif CXN.validUser and cmd == 'PASS' then
-          if arg == CXN.FTP.pass then
-            CXN.cwd = '/'
-            socket:on("receive", function(soc, rec) -- upval: CXN
-                assert(soc==CXN.cmdSocket)
-                CXN.FTP.processCommand(CXN, rec)
+        elseif CNX.validUser and cmd == 'PASS' then
+          if arg == FTP.pass then
+            CNX.cwd = '/'
+            socket:on("receive", function(socketObj, dataObj)
+                processCommand(CNX,socketObj, dataObj)
               end) -- logged on so switch to command mode
             msg = "230 Login successful. Username & password correct; proceed."
           else
@@ -139,7 +156,7 @@ function FTP.createServer(...)  --[[SPLIT HERE ftp-createServer]]
       end
 
     local port,ip = sock:getpeer() -- luacheck: no unused
-    --cxt.debug("Connection accepted: (userdata) %s client %s:%u", tostring(sock), ip, port)
+    --debug("Connection accepted: (userdata) %s client %s:%u", tostring(sock), ip, port)
     sock:on("receive",       validateUser)
     sock:on("disconnection", CXN.close)
     this.client[sock]=CXN
@@ -181,10 +198,9 @@ function FTP.processCommand(...)  --[[SPLIT HERE ftp-processCommand]]
 --
 -- Find strings are used do this lookup and minimise long if chains.
 ------------------------------------------------------------------------------
-
-local cxt, data = ...
-
-  cxt.debug("Command: %s", data)
+-- upvals: (, debug, processBareCmds, processSimpleCmds, processDataCmds)
+processCommand = function(cxt, socket, data) -- luacheck: no unused
+  debug("Command: %s", data)
   data = data:gsub('[\r\n]+$', '') -- chomp trailing CRLF
   local cmd, arg = data:match('([a-zA-Z]+) *(.*)')
   cmd = cmd:upper()
@@ -352,8 +368,8 @@ local cxt, cmd, arg = ...
     end
     table.sort(nameList)
 
-    function cxt.getData(c) -- upval: cmd, fileSize, nameList
-      local list, user = {}, c.FTP.user
+    function cxt.getData() -- upval: cmd, fileSize, nameList (, table)
+      local list, user = {}, FTP.user
       for i = 1,10 do -- luacheck: no unused
         if #nameList == 0 then break end
         local f = table.remove(nameList, 1)
@@ -405,11 +421,11 @@ function FTP.dataServer(...)  --[[SPLIT HERE ftp-dataServer]]
 -- handle the actual xfer. Also note that the sending process can be primed in
 --
 ----------------   Open a new data server and port ---------------------------
-
-local cxt, n = ...
-
-  local dataSvr = cxt.dataServer
-  if dataSvr then pcall(dataSvr.close, dataSrv) end -- luacheck: ignore -- close any existing listener
+dataServer = function(cxt, n) -- upval: (pcall, net, ftpDataOpen, debug, tostring)
+  local dataSrv = cxt.dataServer
+  if dataSrv then -- close any existing listener
+    pcall(dataSrv.close, dataSrv)
+  end
   if n then
     -- Open a new listener if needed. Note that this is only used to establish
     -- a single connection, so ftpDataOpen closes the server socket
@@ -438,11 +454,12 @@ local cxt, dataSocket = ...
   cxt.dataServer:close()
   cxt.dataServer = nil
 
-  function cxt.cleardown(cxt, skt, cdtype)  --luacheck: ignore cxt -- shadowing
-    -- luacheck: ignore cdtype which
-    cdtype = cdtype==1 and "disconnection" or "reconnection"
+  local function cleardown(skt,type) -- upval: cxt (, debug, tostring, post, pcall)
+    -- luacheck: push no unused
+    type = type==1 and "disconnection" or "reconnection"
     local which = cxt.setData and "setData" or (cxt.getData and cxt.getData or "neither")
-    cxt.debug("Cleardown entered from %s with %s", cdtype, which)
+    --debug("Cleardown entered from %s with %s", type, which)
+    -- luacheck: pop
     if cxt.setData then
       cxt:fileClose()
       cxt.setData = nil
@@ -459,10 +476,10 @@ local cxt, dataSocket = ...
 
   local on_hold = false
 
-  dataSocket:on("receive", function(skt, rec) -- upval: cxt, on_hold
+  dataSocket:on("receive", function(skt, rec) --upval: cxt, on_hold (, debug, tstring, post, node, pcall)
 
-    local rectype = cxt.setData and "setData" or (cxt.getData and cxt.getData or "neither")
-    cxt.debug("Received %u data bytes with %s", #rec, rectype)
+    local which = cxt.setData and "setData" or (cxt.getData and cxt.getData or "neither")-- luacheck: no unused
+    --debug("Received %u data bytes with %s", #rec, which)
 
     if not cxt.setData then return end
 
@@ -492,7 +509,7 @@ local cxt, dataSocket = ...
     cxt.debug ("entering sender")
     if not cxt.getData then return end
     skt = skt or cxt.dataSocket
-    local rec = cxt:getData()
+    local rec = cxt.getData()
     if rec and #rec > 0 then
       cxt.debug("Sending %u data bytes", #rec)
       skt:send(rec)
