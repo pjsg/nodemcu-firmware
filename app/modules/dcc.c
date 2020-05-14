@@ -249,7 +249,7 @@ static int dcc_lua_setup(lua_State* L) {
     narg++;
   } 
   
-  if (lua_type(L, narg) == LUA_TFUNCTION || lua_type(L, narg) == LUA_TLIGHTFUNCTION)
+  if (lua_type(L, narg) == LUA_TFUNCTION)
   {
     lua_pushvalue(L, narg);
     register_lua_cb(L, &notify_cb);
@@ -266,7 +266,7 @@ static int dcc_lua_setup(lua_State* L) {
   uint8_t Flags = luaL_checkinteger(L, narg++);
   uint8_t OpsModeAddressBaseCV = luaL_checkinteger(L, narg++);
 
-  if (lua_type(L, narg) == LUA_TFUNCTION || lua_type(L, narg) == LUA_TLIGHTFUNCTION)
+  if (lua_type(L, narg) == LUA_TFUNCTION)
   {
     lua_pushvalue(L, narg);
     register_lua_cb(L, &CV_cb);
@@ -315,7 +315,7 @@ int dcc_lua_init( lua_State *L ) {
 }
 
 // Module function map
-LROT_BEGIN( dcc )
+LROT_BEGIN(dcc, NULL, 0)
   LROT_FUNCENTRY( setup, dcc_lua_setup )
   LROT_FUNCENTRY( close, dcc_lua_close )
   
@@ -343,6 +343,6 @@ LROT_BEGIN( dcc )
   LROT_NUMENTRY( FLAGS_AUTO_FACTORY_DEFAULT, FLAGS_AUTO_FACTORY_DEFAULT )
   LROT_NUMENTRY( FLAGS_OUTPUT_ADDRESS_MODE, FLAGS_OUTPUT_ADDRESS_MODE )
   LROT_NUMENTRY( FLAGS_DCC_ACCESSORY_DECODER, FLAGS_DCC_ACCESSORY_DECODER )
-LROT_END( dcc, NULL, 0 )
+LROT_END(dcc, NULL, 0)
 
 NODEMCU_MODULE(DCC, "dcc", dcc, dcc_lua_init);
