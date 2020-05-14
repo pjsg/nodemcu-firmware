@@ -153,8 +153,6 @@
 static uint8_t  ISREdge;   // Holder of the Next Edge we're looking for: RISING or FALLING
 static int16_t  bitMax, bitMin;
 
-DCC_MSG Msg ;
-
 typedef enum
 {
   WAIT_PREAMBLE = 0,
@@ -204,6 +202,8 @@ typedef struct
 DCC_PROCESSOR_STATE ;
 
 DCC_PROCESSOR_STATE DccProcState ;
+
+static void (*AckFn)();
 
 task_handle_t   DataReady_taskid;
 
@@ -505,7 +505,16 @@ void processDirectOpsOperation( uint8_t Cmd, uint16_t CVAddr, uint8_t Value )
     {
       if( validCV( CVAddr, 1 ) )
       {
-        writeCV( CVAddr, Value );
+        if (writeCV( CVAddr, Value ) == Value) {
+          AckFn();
+        }
+      }
+    } else {
+      if( validCV( CVAddr, 0 ) )
+      {
+        if (readCV( CVAddr ) == Value) {
+          AckFn();
+        }
       }
     }
   }
@@ -529,8 +538,23 @@ void processDirectOpsOperation( uint8_t Cmd, uint16_t CVAddr, uint8_t Value )
         else
           tempValue &= ~BitMask ;  // Turn the Bit Off
 
-        writeCV( CVAddr, tempValue );
-       }
+        if (writeCV( CVAddr, tempValue ) == tempValue) {
+          AckFn();
+        }
+      }
+    } else {
+      if( validCV( CVAddr, 0 ) )
+      {
+        if( BitValue ) {
+          if (tempValue & BitMask) {
+            AckFn();
+          }
+        } else {
+          if (!(tempValue & BitMask)) {
+            AckFn();
+          }
+        }
+      }
     }
   }
 }
@@ -731,6 +755,7 @@ void processServiceModeOperation( DCC_MSG * pDccMsg )
     if( RegisterAddr == 5 )
     {
       DccProcState.PageRegister = Value ;
+      AckFn();
     }
 
     else
@@ -748,7 +773,15 @@ void processServiceModeOperation( DCC_MSG * pDccMsg )
       {
         if( validCV( CVAddr, 1 ) )
         {
-          writeCV( CVAddr, Value );
+          if (writeCV( CVAddr, Value ) == Value) {
+            AckFn();
+          }
+        }
+      } else {
+        if (validCV(CVAddr, 0)) {
+          if (readCV(CVAddr) == Value) {
+            AckFn();
+          }
         }
       }
     }
@@ -1067,25 +1100,32 @@ static void process (os_param_t param, uint8_t prio)
 
   // We need to do this check with interrupts disabled
   //SET_TP4;
-  Msg = DccRx.PacketCopy ;
 
-  #ifdef DCC_DBGVAR
+  DCC_MSG Msg;
+
+  ETS_GPIO_INTR_DISABLE();
+  Msg = DccRx.PacketCopy ;
+  ETS_GPIO_INTR_ENABLE();
+
+#ifdef DCC_DBGVAR
   countOf.Tel++;
-  #endif
+#endif
   
   uint8_t xorValue = 0 ;
   
-  for(uint8_t i = 0; i < DccRx.PacketCopy.Size; i++)
-    xorValue ^= DccRx.PacketCopy.Data[i];
+  for (uint8_t i = 0; i < Msg.Size; i++) {
+    xorValue ^= Msg.Data[i];
+  }
+
   if(xorValue) {
-    #ifdef DCC_DBGVAR
+#ifdef DCC_DBGVAR
     NODE_DBG("[dcc_process] Cerr\n");
     NODE_DBG("[dcc_process] Data dump:");
     for(uint8_t i = 0; i < DccRx.PacketCopy.Size; i++)
       NODE_DBG(" %x", DccRx.PacketCopy.Data[i]);
     NODE_DBG("\n");
     countOf.Err++;
-    #endif
+#endif
     return;// 0 ;
   } else {
     NODE_DBG("[dcc_process] Size: %d\tPreambleBits: %d\t%d, %d, %d, %d, %d, %d\n", 
@@ -1096,11 +1136,13 @@ static void process (os_param_t param, uint8_t prio)
   return;// 1 ;
 }
 
-void dcc_setup(uint8_t pin, uint8_t ManufacturerId, uint8_t VersionId, uint8_t Flags, uint8_t OpsModeAddressBaseCV)
+void dcc_setup(uint8_t pin, uint8_t ManufacturerId, uint8_t VersionId, uint8_t Flags, uint8_t OpsModeAddressBaseCV, void (*ackFunction)())
 {
   NODE_DBG("[dcc_setup]\n");
   // Clear all the static member variables
   memset( &DccRx, 0, sizeof( DccRx) );
+
+  AckFn = ackFunction;
 
   MODE_TP1; // only for debugging and timing measurement
   MODE_TP2;

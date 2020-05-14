@@ -14,16 +14,18 @@ The module is based on the project NmraDcc [https://github.com/mrrwa/NmraDcc](ht
 Initializes the dcc module and links callback functions.
 
 #### Syntax
-`dcc.setup(DCC_command, ManufacturerId, VersionId, Flags, OpsModeAddressBaseCV, CV_callback)`
+`dcc.setup(Pin, [AckPin, ] DCC_command, ManufacturerId, VersionId, Flags, OpsModeAddressBaseCV, CV_callback)`
 
 #### Parameters
+- `Pin` the GPIO pin number connected to the DCC detector (must be interrupt capable pin).
+- `AckPin` the (optional) GPIO pin number connected to the ACK mechanism. Will be set HIGH to signal an ACK.
 - `DCC_command(cmd, params)` calllback function that is called when a DCC command is decoded. `cmd` parameters is one of the following values. `params` contains a collection of parameters specific to given command.
     -  `dcc.DCC_RESET` no additional parameters, `params` is `nil`.
     -  `dcc.DCC_IDLE` no additional parameters, `params` is `nil`.
-    -  `dcc.DCC_SPEED` parameters collection members are `Addr`, `AddrType`, `Speed`,`Dir`, `SpeedSteps`.
+    -  `dcc.DCC_SPEED` parameters collection members are `Addr`, `AddrType`, `Speed`, `Dir`, `SpeedSteps`.
     -  `dcc.DCC_SPEED_RAW`  parameters collection members are `Addr`, `AddrType`, `Raw`.
-    -  `dcc.DCC_FUNC`  parameters collection members are  `Addr`, `AddrType`, `FuncGrp`,`FuncState`.
-    -  `dcc.DCC_TURNOUT` parameters collection members are `BoardAddr`, `OutputPair`, `Direction`,`OutputPower` or `Addr`, `Direction`,`OutputPower`.
+    -  `dcc.DCC_FUNC`  parameters collection members are  `Addr`, `AddrType`, `FuncGrp`, `FuncState`.
+    -  `dcc.DCC_TURNOUT` parameters collection members are `BoardAddr`, `OutputPair`, `Direction`, `OutputPower` or `Addr`, `Direction`, `OutputPower`.
     -  `dcc.DCC_ACCESSORY` parameters collection has one member `BoardAddr` or `Addr` or `State`.
     -  `dcc.DCC_RAW` parameters collection member are `Size`, `PreambleBits`, `Data1` to `Data6`.
     -  `dcc.DCC_SERVICEMODE`  parameters collection has one member `InServiceMode`.
@@ -36,10 +38,11 @@ Initializes the dcc module and links callback functions.
     - `dcc.FLAGS_AUTO_FACTORY_DEFAULT`  Call DCC command callback with `dcc.CV_RESET` command if CV 7 & 8 == 255.
 - `OpsModeAddressBaseCV`  Ops Mode base address. Set it to 0?
 - `CV_callback(operation, param)` callback function that is called when any manipulation with CV ([Configuarion Variable](https://dccwiki.com/Configuration_Variable)) is requested.
-    -  `dcc.CV_VALID`to determine if a given CV is valid. This callback must determine if a CV is valid and return the appropriate value. `param` collection has members `CV` and `Value`.
-    -  `dcc.CV_READ` to read a CV. This callback must return the value of the CV. `param` collection has one member `CV` determing the CV number to be read.
-    -  `dcc.CV_WRITE` to write a value to a CV. This callback must write the Value to the CV and return the value of the CV. `param` collection has members `CV` and `Value`.
+    -  `dcc.CV_VALID` to determine if a given CV is valid and (possibly) writable. This callback must determine if a CV is readable or writable and return the appropriate value(0/1/true/false). The `param` collection has members `CV` and `Writable`.
+    -  `dcc.CV_READ` to read a CV. This callback must return the value of the CV. The `param` collection has one member `CV` determing the CV number to be read.
+    -  `dcc.CV_WRITE` to write a value to a CV. This callback must write the Value to the CV and return the value of the CV. The `param` collection has members `CV` and `Value`. Ideally, the final value should be returned -- this may differ from the requested value.
     -  `dcc.CV_RESET` Called when CVs must be reset to their factory defaults. 
+    -  `dcc.CV_ACK_COMPLETE` Called when an ACK pulse has finished being sent. Only invoked if `AckPin` is specified.
 
 #### Returns
 `nil`
