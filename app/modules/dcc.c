@@ -287,7 +287,9 @@ static void ICACHE_RAM_ATTR cvAckComplete(os_param_t param) {
   // Invoked when we should end the ack pulse
   ackInProgress = FALSE;
   platform_gpio_write(ackPin, 0);
-  platform_post_high(tasknumber, CV_ACK_COMPLETE);
+  if (CV_ref == LUA_NOREF) {
+    platform_post_high(tasknumber, CV_ACK_COMPLETE);
+  }
 }
 
 static int dcc_lua_setup(lua_State* L) {
