@@ -14,7 +14,7 @@ The module is based on the project NmraDcc [https://github.com/mrrwa/NmraDcc](ht
 Initializes the dcc module and links callback functions.
 
 #### Syntax
-`dcc.setup(Pin, [AckPin, ] DCC_command, ManufacturerId, VersionId, Flags, OpsModeAddressBaseCV, CV_callback)`
+`dcc.setup(Pin, [AckPin, ] DCC_command, ManufacturerId, VersionId, Flags, OpsModeAddressBaseCV [, CV_table] [, CV_callback])`
 
 #### Parameters
 - `Pin` the GPIO pin number connected to the DCC detector (must be interrupt capable pin).
@@ -37,6 +37,7 @@ Initializes the dcc module and links callback functions.
     - `dcc.FLAGS_OUTPUT_ADDRESS_MODE` This flag applies to accessory decoders only. Accessory decoders normally have 4 paired outputs and a single address refers to all 4 outputs. Setting this flag causes each address to refer to a single output.
     - `dcc.FLAGS_AUTO_FACTORY_DEFAULT`  Call DCC command callback with `dcc.CV_RESET` command if CV 7 & 8 == 255.
 - `OpsModeAddressBaseCV`  Ops Mode base address. Set it to 0?
+- `CV_table`  The CV values will be directly accessed from this table. metamethods will be invoked if needed. Any errors thrown will cause the CV to be considered invalid. Using this option will prevent `CV_VALID`, `CV_READ`, `CV_WRITE` and `CV_ACK_COMPLETE` from happening.
 - `CV_callback(operation, param)` callback function that is called when any manipulation with CV ([Configuarion Variable](https://dccwiki.com/Configuration_Variable)) is requested.
     -  `dcc.CV_VALID` to determine if a given CV is valid and (possibly) writable. This callback must determine if a CV is readable or writable and return the appropriate value(0/1/true/false). The `param` collection has members `CV` and `Writable`.
     -  `dcc.CV_READ` to read a CV. This callback must return the value of the CV. The `param` collection has one member `CV` determing the CV number to be read.
