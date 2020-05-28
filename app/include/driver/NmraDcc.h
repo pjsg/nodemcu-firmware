@@ -425,9 +425,9 @@ extern uint8_t notifyCVValid( uint16_t CV, uint8_t Writable ) __attribute__ ((we
  *    CV        - CV number.
  *
  *  Returns:
- *    Value     - Value of the CV.
+ *    Value     - Value of the CV (> 255 for invalid CV).
  */
-extern uint8_t notifyCVRead( uint16_t CV) __attribute__ ((weak));
+extern uint16_t notifyCVRead( uint16_t CV) __attribute__ ((weak));
 
 /*+
  *  notifyCVWrite() Callback to write a value to a CV.
@@ -442,9 +442,9 @@ extern uint8_t notifyCVRead( uint16_t CV) __attribute__ ((weak));
  *    Value     - Value of the CV.
  *
  *  Returns:
- *    Value     - Value of the CV.
+ *    Value     - Value of the CV (or > 255 if the CV is invalid)
  */
-extern uint8_t notifyCVWrite( uint16_t CV, uint8_t Value) __attribute__ ((weak));
+extern uint16_t notifyCVWrite( uint16_t CV, uint8_t Value) __attribute__ ((weak));
 
 /*+
  *  notifyCVResetFactoryDefault() Called when CVs must be reset.

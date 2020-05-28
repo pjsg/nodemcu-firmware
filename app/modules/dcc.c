@@ -36,8 +36,15 @@ static inline void unregister_lua_cb(lua_State* L, int* cb_ref){
 
 static int notify_cb = LUA_NOREF;
 static int CV_cb = LUA_NOREF;
+static int CV_ref = LUA_NOREF;
 static int8_t ackPin;
+static char ackInProgress;
 static platform_task_handle_t tasknumber;
+
+typedef struct {
+  uint16_t cv;
+  uint8_t value;
+} CVData;
 
 // DCC commands
 
@@ -161,6 +168,9 @@ void notifyServiceMode(bool InServiceMode){
 
 uint8_t notifyCVValid( uint16_t CV, uint8_t Writable ) { 
   lua_State* L = lua_getstate();
+  if (CV_ref != LUA_NOREF) {
+    return 1;
+  }
   if(notify_cb == LUA_NOREF)
     return 0;
   lua_rawgeti(L, LUA_REGISTRYINDEX, CV_cb);
@@ -174,8 +184,38 @@ uint8_t notifyCVValid( uint16_t CV, uint8_t Writable ) {
   return result;
 }
 
-uint8_t notifyCVRead( uint16_t CV) { 
+static int doDirectCVRead(lua_State *L) {
+  CVData *data = (CVData*) lua_touserdata(L, -1);
+  lua_rawgeti(L, LUA_REGISTRYINDEX, CV_ref);
+  lua_pushinteger(L, data->cv);
+  lua_gettable(L, -2);
+  data->value = (uint8_t) luaL_checkinteger(L, -1);
+  return 0;
+}
+
+static int doDirectCVWrite(lua_State *L) {
+  CVData *data = (CVData*) lua_touserdata(L, -1);
+  lua_rawgeti(L, LUA_REGISTRYINDEX, CV_ref);
+  lua_pushinteger(L, data->cv);
+  lua_pushinteger(L, data->value);
+  lua_settable(L, -3);
+  return 0;
+}
+
+uint16_t notifyCVRead( uint16_t CV) { 
   lua_State* L = lua_getstate();
+  if (CV_ref != LUA_NOREF) {
+    CVData data;
+    data.cv = CV;
+
+    if (lua_cpcall(L, doDirectCVRead, &data)) {
+      // An error.
+      lua_pop(L, 1);
+      return 256;
+    }
+    
+    return data.value;
+  }
   if(notify_cb == LUA_NOREF)
     return 0;
   lua_rawgeti(L, LUA_REGISTRYINDEX, CV_cb);
@@ -188,8 +228,21 @@ uint8_t notifyCVRead( uint16_t CV) {
   return result;
 }
 
-uint8_t notifyCVWrite( uint16_t CV, uint8_t Value) { 
+uint16_t notifyCVWrite( uint16_t CV, uint8_t Value) { 
   lua_State* L = lua_getstate();
+  if (CV_ref != LUA_NOREF) {
+    CVData data;
+    data.cv = CV;
+    data.value = Value;
+
+    if (lua_cpcall(L, doDirectCVWrite, &data)) {
+      // An error.
+      lua_pop(L, 1);
+      return 256;
+    }
+    
+    return data.value;
+  }
   if(notify_cb == LUA_NOREF)
     return 0;
   lua_rawgeti(L, LUA_REGISTRYINDEX, CV_cb);
@@ -222,14 +275,17 @@ void notifyCVResetFactoryDefault(void) {
 
 static void cvAckFn(void) {
   // Invoked when we should generate an ack pulse (if possible)
-  if (ackPin >= 0) {
-    platform_hw_timer_arm_us(TIMER_OWNER, 10 * 1000);
+  if (ackPin >= 0 && !ackInProgress) {
+    // Duration is 6ms +/- 1ms
+    platform_hw_timer_arm_us(TIMER_OWNER, 6 * 1000);
     platform_gpio_write(ackPin, 1);
+    ackInProgress = TRUE;
   }
 }
 
 static void ICACHE_RAM_ATTR cvAckComplete(os_param_t param) {
   // Invoked when we should end the ack pulse
+  ackInProgress = FALSE;
   platform_gpio_write(ackPin, 0);
   platform_post_high(tasknumber, CV_ACK_COMPLETE);
 }
@@ -249,30 +305,32 @@ static int dcc_lua_setup(lua_State* L) {
     narg++;
   } 
   
-  if (lua_type(L, narg) == LUA_TFUNCTION || lua_type(L, narg) == LUA_TLIGHTFUNCTION)
-  {
+  if (lua_isfunction(L, narg)) {
     lua_pushvalue(L, narg);
     register_lua_cb(L, &notify_cb);
-  }
-  else
-  {
+  } else {
     unregister_lua_cb(L, &notify_cb);
   }
 
-  narg++;
-  
   uint8_t ManufacturerId = luaL_checkinteger(L, narg++);
   uint8_t VersionId = luaL_checkinteger(L, narg++);
   uint8_t Flags = luaL_checkinteger(L, narg++);
   uint8_t OpsModeAddressBaseCV = luaL_checkinteger(L, narg++);
 
-  if (lua_type(L, narg) == LUA_TFUNCTION || lua_type(L, narg) == LUA_TLIGHTFUNCTION)
-  {
+  if (lua_istable(L, narg)) {
+    // This is the raw CV table
+    lua_pushvalue(L, narg);
+    register_lua_cb(L, &CV_ref);
+    narg++;
+  } else {
+    unregister_lua_cb(L, &CV_ref);
+  }
+
+  if (lua_isfunction(L, narg)) {
     lua_pushvalue(L, narg);
     register_lua_cb(L, &CV_cb);
-  }
-  else
-  {
+    narg++;
+  } else {
     unregister_lua_cb(L, &CV_cb);
   }
 
@@ -284,10 +342,14 @@ static int dcc_lua_setup(lua_State* L) {
     }
 
     platform_hw_timer_set_func(TIMER_OWNER, cvAckComplete, 0);
+
+    platform_gpio_write(ackpin, 0);
+    platform_gpio_mode(ackpin, PLATFORM_GPIO_OUTPUT, PLATFORM_GPIO_FLOAT);
   }
 
   NODE_DBG("[dcc_lua_setup] Enabling interrupt on PIN %d\n", pin);
   ackPin = ackpin;
+  ackInProgress = FALSE;
   dcc_setup(pin, ManufacturerId, VersionId, Flags, OpsModeAddressBaseCV, cvAckFn );
   
   return 0;
@@ -296,6 +358,8 @@ static int dcc_lua_setup(lua_State* L) {
 static int dcc_lua_close(lua_State* L) {
   dcc_close();
   unregister_lua_cb(L, &notify_cb);
+  unregister_lua_cb(L, &CV_cb);
+  unregister_lua_cb(L, &CV_ref);
   return 0;
 }
 
@@ -310,7 +374,6 @@ int dcc_lua_init( lua_State *L ) {
   NODE_DBG("[dcc_lua_init]\n");
   dcc_init();
   tasknumber = platform_task_get_id(dcc_task);
-  //DccRx.lua_cb_ref = LUA_NOREF;
   return 0;
 }
 
