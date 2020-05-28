@@ -186,24 +186,23 @@ typedef struct
   uint8_t   Flags ;
   uint8_t   OpsModeAddressBaseCV ;
   uint8_t   inServiceMode ;
-  long      LastServiceModeMillis ;
   uint8_t   PageRegister ;  // Used for Paged Operations in Service Mode Programming
   uint8_t   DuplicateCount ;
-  DCC_MSG   LastMsg ;
   uint8_t   IntPin;
   uint8_t   IntBitmask;
-  int16_t   myDccAddress; // Cached value of DCC Address from CVs
   uint8_t   inAccDecDCCAddrNextReceivedMode;
 #ifdef DCC_DEBUG
   uint8_t   IntCount;
   uint8_t   TickCount;
 #endif
+  int16_t   myDccAddress; // Cached value of DCC Address from CVs
+  DCC_MSG   LastMsg ;
+  void      (*AckFn)();
+  uint32_t  LastServiceModeMicros ;
 } 
 DCC_PROCESSOR_STATE ;
 
 DCC_PROCESSOR_STATE DccProcState ;
-
-static void (*AckFn)();
 
 task_handle_t   DataReady_taskid;
 
@@ -403,8 +402,7 @@ static uint32_t ICACHE_RAM_ATTR InterruptHandler (uint32_t ret_gpio_status)
       bitMax = MAX_PRAEAMBEL;
       bitMin = MIN_ONEBITFULL;
       DccRx.PacketCopy = DccRx.PacketBuf ;
-      uint8_t param;
-      task_post_high(DataReady_taskid, (os_param_t) &param);
+      task_post_high(DataReady_taskid, (os_param_t) system_get_time());
       SET_TP3;
     }
     else  // Get next Byte
@@ -428,6 +426,22 @@ static uint32_t ICACHE_RAM_ATTR InterruptHandler (uint32_t ret_gpio_status)
   CLR_TP1;
   CLR_TP3;
   return ret_gpio_status;
+}
+
+static void sendAckPulse() 
+{
+    if (DccProcState.inServiceMode && DccProcState.AckFn) {
+      DccProcState.AckFn();
+    }
+}
+
+static bool dccMsgEqual(const DCC_MSG *lhs, const DCC_MSG *rhs) 
+{
+    if (lhs->Size != rhs->Size) {
+      return FALSE;
+    }
+
+    return memcmp(lhs->Data, rhs->Data, lhs->Size) == 0;
 }
 
 uint8_t validCV( uint16_t CV, uint8_t Writable )
@@ -497,6 +511,7 @@ uint16_t getMyAddr(void)
 
 void processDirectOpsOperation( uint8_t Cmd, uint16_t CVAddr, uint8_t Value )
 {
+  NODE_DBG("[processDirectOpsOperation] cmd=%d, CV=%d, value=%d\n", Cmd, CVAddr, Value);
   // is it a Byte Operation
   if( Cmd & 0x04 )
   {
@@ -506,14 +521,14 @@ void processDirectOpsOperation( uint8_t Cmd, uint16_t CVAddr, uint8_t Value )
       if( validCV( CVAddr, 1 ) )
       {
         if (writeCV( CVAddr, Value ) == Value) {
-          AckFn();
+          sendAckPulse();
         }
       }
     } else {
       if( validCV( CVAddr, 0 ) )
       {
         if (readCV( CVAddr ) == Value) {
-          AckFn();
+          sendAckPulse();
         }
       }
     }
@@ -525,33 +540,35 @@ void processDirectOpsOperation( uint8_t Cmd, uint16_t CVAddr, uint8_t Value )
     uint8_t BitValue = Value & 0x08 ;
     uint8_t BitWrite = Value & 0x10 ;
 
-    uint8_t tempValue = readCV( CVAddr ) ;  // Read the Current CV Value
+    uint16_t tempValue = readCV( CVAddr ) ;  // Read the Current CV Value
 
-    // Perform the Bit Write Operation
-    if( BitWrite )
-    {
-      if( validCV( CVAddr, 1 ) )
+    if (tempValue <= 255) {
+      // Perform the Bit Write Operation
+      if( BitWrite )
       {
-        if( BitValue )
-          tempValue |= BitMask ;     // Turn the Bit On
+        if( validCV( CVAddr, 1 ) )
+        {
+          if( BitValue )
+            tempValue |= BitMask ;     // Turn the Bit On
 
-        else
-          tempValue &= ~BitMask ;  // Turn the Bit Off
+          else
+            tempValue &= ~BitMask ;  // Turn the Bit Off
 
-        if (writeCV( CVAddr, tempValue ) == tempValue) {
-          AckFn();
-        }
-      }
-    } else {
-      if( validCV( CVAddr, 0 ) )
-      {
-        if( BitValue ) {
-          if (tempValue & BitMask) {
-            AckFn();
+          if (writeCV( CVAddr, tempValue ) == tempValue) {
+            sendAckPulse();
           }
-        } else {
-          if (!(tempValue & BitMask)) {
-            AckFn();
+        }
+      } else {
+        if( validCV( CVAddr, 0 ) )
+        {
+          if( BitValue ) {
+            if (tempValue & BitMask) {
+              sendAckPulse();
+            }
+          } else {
+            if (!(tempValue & BitMask)) {
+              sendAckPulse();
+            }
           }
         }
       }
@@ -755,7 +772,7 @@ void processServiceModeOperation( DCC_MSG * pDccMsg )
     if( RegisterAddr == 5 )
     {
       DccProcState.PageRegister = Value ;
-      AckFn();
+      sendAckPulse();
     }
 
     else
@@ -774,13 +791,13 @@ void processServiceModeOperation( DCC_MSG * pDccMsg )
         if( validCV( CVAddr, 1 ) )
         {
           if (writeCV( CVAddr, Value ) == Value) {
-            AckFn();
+            sendAckPulse();
           }
         }
       } else {
         if (validCV(CVAddr, 0)) {
           if (readCV(CVAddr) == Value) {
-            AckFn();
+            sendAckPulse();
           }
         }
       }
@@ -807,7 +824,7 @@ void resetServiceModeTimer(uint8_t inServiceMode)
   // Set the Service Mode
   DccProcState.inServiceMode = inServiceMode ;
   
-  DccProcState.LastServiceModeMillis = inServiceMode ? system_get_time() : 0 ;
+  DccProcState.LastServiceModeMicros = inServiceMode ? system_get_time() : 0 ;
   if (notifyServiceMode && inServiceMode != DccProcState.inServiceMode)
   {
     notifyServiceMode(inServiceMode);
@@ -851,7 +868,7 @@ void execDccProcessor( DCC_MSG * pDccMsg )
     {
       resetServiceModeTimer( 1 ) ;
 
-      if( memcmp( pDccMsg, &DccProcState.LastMsg, sizeof( DCC_MSG ) ) )
+      if( !dccMsgEqual( pDccMsg, &DccProcState.LastMsg) ) 
       {
         DccProcState.DuplicateCount = 0 ;
         memcpy( &DccProcState.LastMsg, pDccMsg, sizeof( DCC_MSG ) ) ;
@@ -1088,15 +1105,15 @@ void execDccProcessor( DCC_MSG * pDccMsg )
 
 static void process (os_param_t param, uint8_t prio)
 {
-  // !!!!!! - this will not happen as we call process task only when data is ready
-  // if( DccProcState.inServiceMode )
-  // {
-    // if( (system_get_time() - DccProcState.LastServiceModeMillis ) > 20L )
-    // {
-      // clearDccProcState( 0 ) ;
-    // }
-  // }
-  // !!!!!!
+  if( DccProcState.inServiceMode )
+  {
+    // This ought to be 20 msecs, but there are variable scheduling delays. Set to 1 seconds
+    // as long stop. This shouldn't happen anyway
+    if(((system_get_time() - DccProcState.LastServiceModeMicros ) & 0x7fffffff) > 1000000 )
+    {
+      clearDccProcState( 0 ) ;
+    }
+  }
 
   // We need to do this check with interrupts disabled
   //SET_TP4;
@@ -1128,9 +1145,10 @@ static void process (os_param_t param, uint8_t prio)
 #endif
     return;// 0 ;
   } else {
-    NODE_DBG("[dcc_process] Size: %d\tPreambleBits: %d\t%d, %d, %d, %d, %d, %d\n", 
-      Msg.Size, Msg.PreambleBits, Msg.Data[0], Msg.Data[1], Msg.Data[2], Msg.Data[3], Msg.Data[4], Msg.Data[5]); 
+    //NODE_DBG("[dcc_process] Size: %d\tPreambleBits: %d\t%d, %d, %d, %d, %d, %d\n", 
+    //  Msg.Size, Msg.PreambleBits, Msg.Data[0], Msg.Data[1], Msg.Data[2], Msg.Data[3], Msg.Data[4], Msg.Data[5]); 
     execDccProcessor( &Msg );
+    NODE_DBG("[dcc_process_time] %d us\n", system_get_time() - param);
   }
   
   return;// 1 ;
@@ -1142,7 +1160,7 @@ void dcc_setup(uint8_t pin, uint8_t ManufacturerId, uint8_t VersionId, uint8_t F
   // Clear all the static member variables
   memset( &DccRx, 0, sizeof( DccRx) );
 
-  AckFn = ackFunction;
+  DccProcState.AckFn = ackFunction;
 
   MODE_TP1; // only for debugging and timing measurement
   MODE_TP2;
