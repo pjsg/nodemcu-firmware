@@ -876,7 +876,7 @@ void execDccProcessor( DCC_MSG * pDccMsg )
         DccProcState.DuplicateCount = 0 ;
         DccProcState.sendAckIfSMPacketSame = 0 ;
         memcpy( &DccProcState.LastMsg, pDccMsg, sizeof( DCC_MSG ) ) ;
-        NODE_DEBUG("[edp] Msg not equal\n");
+        NODE_DBG("[edp] Msg not equal\n");
       }
       // Wait until you see 2 identicle packets before acting on a Service Mode Packet 
       else
@@ -1153,12 +1153,16 @@ static void process (os_param_t param, uint8_t prio)
 #endif
     return;// 0 ;
   } else {
-    //NODE_DBG("[dcc_process] Size: %d\tPreambleBits: %d\t%d, %d, %d, %d, %d, %d\n", 
-    //  Msg.Size, Msg.PreambleBits, Msg.Data[0], Msg.Data[1], Msg.Data[2], Msg.Data[3], Msg.Data[4], Msg.Data[5]); 
+#ifdef NODE_DEBUG
+    NODE_DBG("[dcc_process] Size: %d\tPreambleBits: %d\t%d, %d, %d, %d, %d, %d\n", 
+      Msg.Size, Msg.PreambleBits, Msg.Data[0], Msg.Data[1], Msg.Data[2], Msg.Data[3], Msg.Data[4], Msg.Data[5]); 
     uint32_t start_time = system_get_time(); 
+#endif
     execDccProcessor( &Msg );
+#ifdef NODE_DEBUG
     uint32_t now = system_get_time();
-    NODE_DEBUG("[dpt] %d us (delay %d us)\n", now - start_time, start_time - param);
+    NODE_DBG("[dpt] %d us (delay %d us)\n", now - start_time, start_time - param);
+#endif
   }
   
   return;// 1 ;
