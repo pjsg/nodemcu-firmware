@@ -59,6 +59,9 @@
   (byte & 0x01 ? '1' : '0') 
 
 
+//#undef NODE_DBG
+//#define NODE_DBG dbg_printf
+
 
 //------------------------------------------------------------------------
 // DCC Receive Routine
@@ -191,6 +194,7 @@ typedef struct
   uint8_t   IntPin;
   uint8_t   IntBitmask;
   uint8_t   inAccDecDCCAddrNextReceivedMode;
+  uint8_t   sendAckIfSMPacketSame;
 #ifdef DCC_DEBUG
   uint8_t   IntCount;
   uint8_t   TickCount;
@@ -432,7 +436,8 @@ static uint32_t ICACHE_RAM_ATTR InterruptHandler (uint32_t ret_gpio_status)
 static void sendAckPulse() 
 {
     if (DccProcState.inServiceMode && DccProcState.AckFn) {
-      DccProcState.AckFn();
+      //DccProcState.AckFn();
+      DccProcState.sendAckIfSMPacketSame = 1;
     }
 }
 
@@ -837,6 +842,7 @@ void clearDccProcState(uint8_t inServiceMode)
 
   // Clear the LastMsg buffer and DuplicateCount in preparation for possible CV programming
   DccProcState.DuplicateCount = 0 ;
+  DccProcState.sendAckIfSMPacketSame = 0;
   memset( &DccProcState.LastMsg, 0, sizeof( DCC_MSG ) ) ;
 }
 
@@ -868,12 +874,17 @@ void execDccProcessor( DCC_MSG * pDccMsg )
       if( !dccMsgEqual( pDccMsg, &DccProcState.LastMsg) ) 
       {
         DccProcState.DuplicateCount = 0 ;
+        DccProcState.sendAckIfSMPacketSame = 0 ;
         memcpy( &DccProcState.LastMsg, pDccMsg, sizeof( DCC_MSG ) ) ;
+        NODE_DEBUG("[edp] Msg not equal\n");
       }
       // Wait until you see 2 identicle packets before acting on a Service Mode Packet 
       else
       {
         DccProcState.DuplicateCount++ ;
+        if (DccProcState.sendAckIfSMPacketSame) {
+            DccProcState.AckFn();
+        }
         processServiceModeOperation( pDccMsg ) ;
       }
     }
@@ -1147,7 +1158,7 @@ static void process (os_param_t param, uint8_t prio)
     uint32_t start_time = system_get_time(); 
     execDccProcessor( &Msg );
     uint32_t now = system_get_time();
-    dbg_printf("[dpt] %d us (delay %d us)\n", now - start_time, start_time - param);
+    NODE_DEBUG("[dpt] %d us (delay %d us)\n", now - start_time, start_time - param);
   }
   
   return;// 1 ;
