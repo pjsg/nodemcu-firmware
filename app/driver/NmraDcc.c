@@ -198,7 +198,8 @@ typedef struct
   int16_t   myDccAddress; // Cached value of DCC Address from CVs
   DCC_MSG   LastMsg ;
   void      (*AckFn)();
-  uint32_t  LastServiceModeMicros ;
+  uint32_t  LastServiceModeMicros;
+  uint32_t  CurrentPacketEndTime;
 } 
 DCC_PROCESSOR_STATE ;
 
@@ -823,12 +824,8 @@ void resetServiceModeTimer(uint8_t inServiceMode)
   }
   // Set the Service Mode
   DccProcState.inServiceMode = inServiceMode ;
-  
-  DccProcState.LastServiceModeMicros = inServiceMode ? system_get_time() : 0 ;
-  if (notifyServiceMode && inServiceMode != DccProcState.inServiceMode)
-  {
-    notifyServiceMode(inServiceMode);
-  }
+
+  DccProcState.LastServiceModeMicros = inServiceMode ? DccProcState.CurrentPacketEndTime : 0 ;
 }
 
 void clearDccProcState(uint8_t inServiceMode)
@@ -1105,11 +1102,11 @@ void execDccProcessor( DCC_MSG * pDccMsg )
 
 static void process (os_param_t param, uint8_t prio)
 {
+  DccProcState.CurrentPacketEndTime = (uint32_t) param;
+
   if( DccProcState.inServiceMode )
   {
-    // This ought to be 20 msecs, but there are variable scheduling delays. Set to 1 seconds
-    // as long stop. This shouldn't happen anyway
-    if(((system_get_time() - DccProcState.LastServiceModeMicros ) & 0x7fffffff) > 1000000 )
+    if(((DccProcState.CurrentPacketEndTime - DccProcState.LastServiceModeMicros ) & 0x7fffffff) > 20 * 1000 )
     {
       clearDccProcState( 0 ) ;
     }
@@ -1147,8 +1144,10 @@ static void process (os_param_t param, uint8_t prio)
   } else {
     //NODE_DBG("[dcc_process] Size: %d\tPreambleBits: %d\t%d, %d, %d, %d, %d, %d\n", 
     //  Msg.Size, Msg.PreambleBits, Msg.Data[0], Msg.Data[1], Msg.Data[2], Msg.Data[3], Msg.Data[4], Msg.Data[5]); 
+    uint32_t start_time = system_get_time(); 
     execDccProcessor( &Msg );
-    NODE_DBG("[dcc_process_time] %d us\n", system_get_time() - param);
+    uint32_t now = system_get_time();
+    dbg_printf("[dpt] %d us (delay %d us)\n", now - start_time, start_time - param);
   }
   
   return;// 1 ;
@@ -1177,6 +1176,7 @@ void dcc_setup(uint8_t pin, uint8_t ManufacturerId, uint8_t VersionId, uint8_t F
   DccProcState.OpsModeAddressBaseCV = OpsModeAddressBaseCV ;
   DccProcState.myDccAddress = -1;
   DccProcState.inAccDecDCCAddrNextReceivedMode = 0;
+  DccProcState.CurrentPacketEndTime = system_get_time();
 
   ISREdge = GPIO_PIN_INTR_POSEDGE;
 
