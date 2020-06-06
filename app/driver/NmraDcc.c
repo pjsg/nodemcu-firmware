@@ -121,6 +121,10 @@
 
 
 #ifdef NODE_DEBUG 
+#define DEBUG_INT
+#endif
+
+#ifdef DEBUG_INT
     #define PULLUP PLATFORM_GPIO_PULLUP
     #define OUTPUT PLATFORM_GPIO_OUTPUT
     #define HIGH PLATFORM_GPIO_HIGH
@@ -138,6 +142,12 @@
     #define MODE_TP4 platform_gpio_mode( 8, OUTPUT, PULLUP ); // GPIO 15
     #define SET_TP4  platform_gpio_write(8, HIGH);
     #define CLR_TP4  platform_gpio_write(8, LOW);
+    #define MODE_TP5 platform_gpio_mode( 4, OUTPUT, PULLUP ); 
+    #define SET_TP5  platform_gpio_write(4, HIGH);
+    #define CLR_TP5  platform_gpio_write(4, LOW);
+    #define MODE_TP6 platform_gpio_mode( 3, OUTPUT, PULLUP ); 
+    #define SET_TP6  platform_gpio_write(3, HIGH);
+    #define CLR_TP6  platform_gpio_write(3, LOW);
 #else
     #define MODE_TP1 
     #define SET_TP1 
@@ -151,6 +161,12 @@
     #define MODE_TP4 
     #define SET_TP4 
     #define CLR_TP4 
+    #define MODE_TP5 
+    #define SET_TP5 
+    #define CLR_TP5 
+    #define MODE_TP6 
+    #define SET_TP6 
+    #define CLR_TP6 
 #endif
 
 static uint8_t  ISREdge;   // Holder of the Next Edge we're looking for: RISING or FALLING
@@ -240,8 +256,8 @@ static uint32_t ICACHE_RAM_ATTR InterruptHandler (uint32_t ret_gpio_status)
   }
   DccBitVal = ( bitMicros < bitMax );
   lastMicros = actMicros;
-  #ifdef NODE_DEBUG
-  if(DccBitVal) {SET_TP2;} else {CLR_TP2;};
+  #ifdef DEBUG_INT
+  //if(DccBitVal) {SET_TP2;} else {CLR_TP2;};
   #endif
   #ifdef DCC_DEBUG
   DccProcState.TickCount++;
@@ -296,7 +312,7 @@ static uint32_t ICACHE_RAM_ATTR InterruptHandler (uint32_t ret_gpio_status)
             DccRx.BitCount++;
             if( abs(bit2-bit1) > MAX_BITDIFF ) {
                 // the length of the 2 halfbits differ too much -> wrong protokoll
-                CLR_TP2;
+                //CLR_TP2;
                 CLR_TP3;
                 DccRx.State = WAIT_PREAMBLE;
                 bitMax = MAX_PRAEAMBEL;
@@ -433,6 +449,11 @@ static uint32_t ICACHE_RAM_ATTR InterruptHandler (uint32_t ret_gpio_status)
   return ret_gpio_status;
 }
 
+/*
+ * This doesn't really send an Ack Pulse -- it just sets things up so that
+ * if the operation is repeated (exactly) then an Ack Pulse will be sent
+ * immediately
+ */
 static void sendAckPulse() 
 {
     if (DccProcState.inServiceMode && DccProcState.AckFn) {
@@ -462,8 +483,12 @@ uint8_t validCV( uint16_t CV, uint8_t Writable )
 
 uint8_t readCV( unsigned int CV )
 {
-  if( notifyCVRead )
-    return notifyCVRead( CV ) ;
+  if( notifyCVRead ) {
+    SET_TP2;
+    uint8_t result = notifyCVRead(CV);
+    CLR_TP2;
+    return result;
+  }
   return 0;
 }
 
@@ -830,6 +855,14 @@ void resetServiceModeTimer(uint8_t inServiceMode)
   // Set the Service Mode
   DccProcState.inServiceMode = inServiceMode ;
 
+#ifdef DEBUG_INT
+  if (inServiceMode) {
+    SET_TP6;
+  } else {
+    CLR_TP6;
+  }
+#endif
+
   DccProcState.LastServiceModeMicros = inServiceMode ? DccProcState.CurrentPacketEndTime : 0 ;
 }
 
@@ -1113,6 +1146,7 @@ void execDccProcessor( DCC_MSG * pDccMsg )
 
 static void process (os_param_t param, uint8_t prio)
 {
+  SET_TP5;
   DccProcState.CurrentPacketEndTime = (uint32_t) param;
 
   if( DccProcState.inServiceMode )
@@ -1151,7 +1185,12 @@ static void process (os_param_t param, uint8_t prio)
     NODE_DBG("\n");
     countOf.Err++;
 #endif
-    return;// 0 ;
+    CLR_TP5;
+    CLR_TP5;
+    CLR_TP5;
+    SET_TP5;
+    SET_TP5;
+    SET_TP5;
   } else {
 #ifdef NODE_DEBUG
     NODE_DBG("[dcc_process] Size: %d\tPreambleBits: %d\t%d, %d, %d, %d, %d, %d\n", 
@@ -1165,7 +1204,7 @@ static void process (os_param_t param, uint8_t prio)
 #endif
   }
   
-  return;// 1 ;
+  CLR_TP5;
 }
 
 void dcc_setup(uint8_t pin, uint8_t ManufacturerId, uint8_t VersionId, uint8_t Flags, uint8_t OpsModeAddressBaseCV, void (*ackFunction)())
@@ -1180,10 +1219,14 @@ void dcc_setup(uint8_t pin, uint8_t ManufacturerId, uint8_t VersionId, uint8_t F
   MODE_TP2;
   MODE_TP3;
   MODE_TP4;
+  MODE_TP5;
+  MODE_TP6;
   CLR_TP1;
   CLR_TP2;
   CLR_TP3;
   CLR_TP4;
+  CLR_TP5;
+  CLR_TP6;
   
   bitMax = MAX_ONEBITFULL;
   bitMin = MIN_ONEBITFULL;

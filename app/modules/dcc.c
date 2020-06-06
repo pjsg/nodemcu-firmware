@@ -208,7 +208,9 @@ uint16_t notifyCVRead( uint16_t CV) {
     CVData data;
     data.cv = CV;
 
-    if (lua_cpcall(L, doDirectCVRead, &data)) {
+    lua_pushcfunction(L, doDirectCVRead);
+    lua_pushlightuserdata(L, &data);
+    if (lua_pcall(L, 1, 0, 0)) {
       // An error.
       lua_pop(L, 1);
       return 256;
@@ -235,7 +237,9 @@ uint16_t notifyCVWrite( uint16_t CV, uint8_t Value) {
     data.cv = CV;
     data.value = Value;
 
-    if (lua_cpcall(L, doDirectCVWrite, &data)) {
+    lua_pushcfunction(L, doDirectCVWrite);
+    lua_pushlightuserdata(L, &data);
+    if (lua_pcall(L, 1, 0, 0)) {
       // An error.
       lua_pop(L, 1);
       return 256;
