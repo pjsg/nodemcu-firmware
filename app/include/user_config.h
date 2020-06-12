@@ -273,6 +273,14 @@ extern void luaL_assertfail(const char *file, int line, const char *message);
 #define COAP_DEBUG
 #endif /* DEVELOP_VERSION */
 
+#ifdef DEBUG_TP_ENABLE
+#define DEBUG_TP_SET_TO(pin, level) do { GPIO_REG_WRITE(GPIO_ENABLE_W1TS_ADDRESS, BIT(pin_num[pin])); GPIO_OUTPUT_SET(GPIO_ID_PIN(pin_num[pin]), level); } while (0)
+#define DEBUG_TP_SET(pin) DEBUG_TP_SET_TO(pin, 1)
+#define DEBUG_TP_CLR(pin) DEBUG_TP_SET_TO(pin, 0)
+#else
+#define DEBUG_TP_SET(x)
+#define DEBUG_TP_CLR(x)
+#endif
 
 #if !defined(LUA_CROSS_COMPILER) && !defined(dbg_printf)
 extern void dbg_printf(const char *fmt, ...);

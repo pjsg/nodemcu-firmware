@@ -275,6 +275,7 @@ uint32 ICACHE_RAM_ATTR user_iram_memory_is_enabled(void) {
 }
 
 void nodemcu_init(void) {
+  DEBUG_TP_CLR(3);
    NODE_DBG("Task task_lua starting.\n");
    // Call the Lua bootstrap startup directly.  This uses the task interface
    // internally to carry out the main lua libraries initialisation.
@@ -300,6 +301,11 @@ void user_rf_pre_init(void)
  * Returns      : none
 *******************************************************************************/
 void user_init(void) {
+//#ifdef LUA_FAST_START
+    DEBUG_TP_SET(3);
+    REG_SET_BIT(0x3ff00014, BIT(0));
+    ets_update_cpu_frequency(CPU160MHZ);
+//#endif
 #ifdef LUA_USE_MODULES_RTCTIME
     rtctime_late_startup ();
 #endif
