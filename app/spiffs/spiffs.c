@@ -35,13 +35,47 @@ static u8_t myspiffs_cache[20 + (LOG_PAGE_SIZE+20)*4];
 #endif
 
 static s32_t my_spiffs_read(u32_t addr, u32_t size, u8_t *dst) {
-  platform_flash_read(dst, addr, size);
-  return SPIFFS_OK;
+  char loop = 0;
+  do {
+    uint32_t r = platform_flash_read(dst, addr, size);
+    if (r == size) {
+      return SPIFFS_OK;
+    }
+  }
+  while (loop++ < 2);
+
+  return -5;   // This is -EIO;
 }
 
 static s32_t my_spiffs_write(u32_t addr, u32_t size, u8_t *src) {
-  platform_flash_write(src, addr, size);
-  return SPIFFS_OK;
+  char loop = 0;
+  do {
+    uint32_t r = platform_flash_write(src, addr, size);
+    if (r == size) {
+      // It is claimed to have worked.
+      if (loop) {
+        // We need to verify that it did actually work
+        u8_t buffer[16];
+
+        while (size > 0) {
+          uint32_t tsize = min(sizeof(buffer), size);
+          r = my_spiffs_read(buffer, addr, tsize);
+          if (r != tsize) {
+            return r;
+          }
+          if (memcmp(buffer, addr, tsize) != 0) {
+            return -5;
+          }
+
+          size -= tsize;
+          addr += tsize;
+        }
+      }
+      return SPIFFS_OK;
+    }
+  } while (loop++ < 2);
+
+  return -5;
 }
 
 static int erase_cnt = -1;  // If set to >=0 then erasing gives a ... feedback
