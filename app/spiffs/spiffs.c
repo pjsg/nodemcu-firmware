@@ -58,12 +58,12 @@ static s32_t my_spiffs_write(u32_t addr, u32_t size, u8_t *src) {
         u8_t buffer[16];
 
         while (size > 0) {
-          uint32_t tsize = min(sizeof(buffer), size);
-          r = my_spiffs_read(buffer, addr, tsize);
+          uint32_t tsize = MIN(sizeof(buffer), size);
+          r = my_spiffs_read(addr, tsize, buffer);
           if (r != tsize) {
             return r;
           }
-          if (memcmp(buffer, addr, tsize) != 0) {
+          if (memcmp(buffer, (u8_t *) addr, tsize) != 0) {
             return -5;
           }
 
