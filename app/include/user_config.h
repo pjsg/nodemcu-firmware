@@ -42,21 +42,34 @@
 //#define DISABLE_STARTUP_BANNER
 
 
-// Three separate build variants are now supported. The main difference is in the
-// processing of numeric data types.  If LUA_NUMBER_INTEGRAL is defined, then
+// When using LUA51, two different builds are now supported.
+// The main difference is in the // processing of numeric data types.
+// If LUA_NUMBER_INTEGRAL is defined, then
 // all numeric calculations are done in integer, with divide being an integer
-// operations, and decimal fraction constants are illegal.  Otherwise all
-// numeric operations use floating point, though they are exact for integer
-// expressions < 2^53.
-
-// The main advantage of INTEGRAL builds is that the basic internal storage unit,
-// the TValue, is 8 bytes long.  We have now reduced the size of FP TValues to
-// 12 bytes rather than the previous 16 as this gives a material RAM saving with
-// no performance loss.  However, you can define LUA_DWORD_ALIGNED_TVALUES and
-// this will force 16 byte TValues on FP builds.
+// operations, and decimal fraction constants are illegal.
+// Otherwise all floating point operations use doubles. All integer values
+// can be represented exactly in floating point.
 
 //#define LUA_NUMBER_INTEGRAL
-//#define LUA_DWORD_ALIGNED_TVALUES
+
+// When using LUA53, two different builds are now supported. 
+// The main difference is in the // processing of numeric data types.
+// If LUA_NUMBER_DOUBLE is defined, then doubles are used to hold floating
+// point numbers. Integers can be converted to doubles and back without any
+// loss of precision.
+// Otherwise all floating point operations use floats. Only integers under 2^24
+// can be represented exactly in floating point.
+// Note that LUA53 also supports Integers natively, but you have to be careful 
+// not to promote an integer to a float point variable if you are using a float build
+// as you can lose precision.
+
+//#define LUA_NUMBER_DOUBLE
+
+// The main advantage of INTEGRAL builds and non DOUBLE builds that the basic internal
+// storage unit, the TValue, is 8 bytes long.  For DOUBLE builds, we have now reduced
+// the size of FP TValues to 12 bytes rather than the previous 16 as this gives a
+// material RAM saving with no performance loss.
+//
 
 
 // The Lua Flash Store (LFS) allows you to store Lua code in Flash memory and
@@ -138,7 +151,7 @@
 
 // The net module optionally offers net info functionnality. Uncomment the following
 // to enable the functionnality.
-#define NET_PING_ENABLE 
+#define NET_PING_ENABLE
 
 // The WiFi module optionally offers an enhanced level of WiFi connection
 // management, using internal timer callbacks.  Whilst many Lua developers
@@ -251,7 +264,7 @@
 #define READLINE_INTERVAL        80
 #define STRBUF_DEFAULT_INCREMENT  3
 #define LUA_USE_BUILTIN_DEBUG_MINIMAL // for debug.getregistry() and debug.traceback()
- 
+
 #if defined(DEVELOPMENT_TOOLS) && defined(DEVELOPMENT_USE_GDB)
 extern void LUA_DEBUG_HOOK (void);
 #define lua_assert(x)    ((x) ? (void) 0 : LUA_DEBUG_HOOK ())
