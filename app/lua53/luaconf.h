@@ -85,14 +85,14 @@
 #  define LUA_FLOAT_TYPE	LUA_FLOAT_DOUBLE
 #endif
 #endif
-#  define LUA_INT_TYPE    LUA_INT_INT
-#ifdef LUA_NUMBER_DOUBLE
+#ifdef LUA_NUMBER_64BITS
 #  define LUA_FLOAT_TYPE  LUA_FLOAT_DOUBLE
+#  define LUA_INT_TYPE    LUA_INT_LONGLONG
 #else
 #  define LUA_FLOAT_TYPE  LUA_FLOAT_FLOAT
+#  define LUA_INT_TYPE    LUA_INT_INT
 #endif
-//#  define LUA_FLOAT_TYPE  LUA_FLOAT_DOUBLE
-//
+
 #ifdef LUA_NUMBER_INTEGRAL
 #error LUA_NUMBER_INTEGRAL is not supported in LUA5.3 builds
 #endif

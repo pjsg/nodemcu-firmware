@@ -42,31 +42,31 @@
 //#define DISABLE_STARTUP_BANNER
 
 
-// When using LUA51, two different builds are now supported.
+// When using Lua 5.1, two different builds are now supported.
 // The main difference is in the // processing of numeric data types.
 // If LUA_NUMBER_INTEGRAL is defined, then
 // all numeric calculations are done in integer, with divide being an integer
-// operations, and decimal fraction constants are illegal.
+// operation, and decimal fraction constants are illegal.
 // Otherwise all floating point operations use doubles. All integer values
 // can be represented exactly in floating point.
 
 //#define LUA_NUMBER_INTEGRAL
 
-// When using LUA53, two different builds are now supported. 
-// The main difference is in the // processing of numeric data types.
-// If LUA_NUMBER_DOUBLE is defined, then doubles are used to hold floating
-// point numbers. Integers can be converted to doubles and back without any
-// loss of precision.
+// When using Lua 5.3, two different builds are now supported. 
+// The main difference is in the processing of numeric data types.
+// If LUA_NUMBER_64BITS is defined, then doubles are used to hold floating
+// point numbers. Integers under 2^53 are representable exactly in doubles.
+// Integers are held in 64-bit variables. 
 // Otherwise all floating point operations use floats. Only integers under 2^24
-// can be represented exactly in floating point.
-// Note that LUA53 also supports Integers natively, but you have to be careful 
-// not to promote an integer to a float point variable if you are using a float build
+// can be represented exactly in floating point. Integers are represented in 32 bit variables.
+// Note that Lua 5.3 also supports Integers natively, but you have to be careful 
+// not to promote an integer to a floating point variable if you are using a float build
 // as you can lose precision.
 
-//#define LUA_NUMBER_DOUBLE
+//#define LUA_NUMBER_64BITS
 
-// The main advantage of INTEGRAL builds and non DOUBLE builds that the basic internal
-// storage unit, the TValue, is 8 bytes long.  For DOUBLE builds, we have now reduced
+// The main advantage of INTEGRAL builds and non 64BITS builds is that the basic internal
+// storage unit, the TValue, is 8 bytes long.  For 64BITS builds, we have now reduced
 // the size of FP TValues to 12 bytes rather than the previous 16 as this gives a
 // material RAM saving with no performance loss.
 //
