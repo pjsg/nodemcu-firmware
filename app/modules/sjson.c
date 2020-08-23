@@ -164,6 +164,12 @@ static void push_number(JSN_DATA *data, struct jsonsl_state_st *state) {
   }
 #else
   lua_Number result = lua_tonumber(data->L, -1);
+  if (result == 0) {
+    // might be an invalid number
+    if (!lua_isnumber(data->L, -1)) {
+      luaL_error(data->L, "Invalid number");
+    }
+  }
   lua_pop(data->L, 1);
   lua_pushnumber(data->L, result);
 #endif
