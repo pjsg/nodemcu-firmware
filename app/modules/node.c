@@ -639,6 +639,25 @@ static int node_random (lua_State *L) {
 }
 
 #ifdef DEVELOPMENT_TOOLS
+static int node_peek(lua_State *L) {
+  luaL_Buffer b;
+  luaL_buffinit( L, &b );
+  char *p = luaL_prepbuffer(&b);
+
+  uint32_t addr = luaL_checkint(L, 1);
+  uint32_t len = luaL_checkint(L, 2);
+
+  if (len > LUAL_BUFFERSIZE) {
+    len = LUAL_BUFFERSIZE;
+  }
+
+  int size = platform_s_flash_read(p, addr, len);
+
+  luaL_addsize(&b, size);
+  luaL_pushresult( &b );
+  return 1;
+}
+
 // Lua: rec = node.readrcr(id)
 static int node_readrcr (lua_State *L) {
   int id  = luaL_checkinteger(L, 1);
@@ -927,6 +946,7 @@ LROT_BEGIN(node, NULL, 0)
 #endif
 #ifdef DEVELOPMENT_TOOLS
   LROT_FUNCENTRY( osprint, node_osprint )
+  LROT_FUNCENTRY( peek, node_peek )
 #endif
   LROT_FUNCENTRY( getpartitiontable, node_getpartitiontable )
   LROT_FUNCENTRY( setpartitiontable, node_setpartitiontable )

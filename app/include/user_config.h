@@ -63,7 +63,7 @@
 // not to promote an integer to a floating point variable if you are using a float build
 // as you can lose precision.
 
-//#define LUA_NUMBER_64BITS
+#define LUA_NUMBER_64BITS
 
 // The main advantage of INTEGRAL builds and non 64BITS builds is that the basic internal
 // storage unit, the TValue, is 8 bytes long.  For 64BITS builds, we have now reduced
@@ -79,7 +79,7 @@
 // LUA_FLASH_STORE defines the default partition size if the NodeMCU partition
 // tool is not used.
 
-//#define LUA_FLASH_STORE                   0x10000
+#define LUA_FLASH_STORE                   0x20000
 
 // By default Lua executes the file init.lua at start up.  The following
 // define allows you to replace this with an alternative startup.  Warning:
@@ -88,7 +88,7 @@
 // The example provided executes the LFS module "_init" at startup or fails
 // through to the interactive prompt.
 
-//#define LUA_INIT_STRING "pcall(function() node.flashindex'_init'() end)"
+#define LUA_INIT_STRING "pcall(function() node.flashindex'_init'() end)"
 
 
 // NodeMCU supports two file systems: SPIFFS and FATFS, the first is available
@@ -228,7 +228,7 @@
 // directory basis. If you do this then you can also set the corresponding
 // compile options (-O0 -ggdb) on a per directory as well.
 
-//#define DEVELOPMENT_TOOLS
+#define DEVELOPMENT_TOOLS
 //#define DEVELOPMENT_USE_GDB
 //#define DEVELOPMENT_BREAK_ON_STARTUP_PIN 1
 //#define DEVELOP_VERSION
