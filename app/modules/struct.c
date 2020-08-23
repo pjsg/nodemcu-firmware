@@ -60,6 +60,14 @@ typedef unsigned STRUCT_INT Uinttype;
 #define MAXINTSIZE	32
 #endif
 
+#ifndef LUA_MININTEGER
+#define LUA_MININTEGER INT_MIN
+#endif
+
+#ifndef LUA_MAXINTEGER
+#define LUA_MAXINTEGER INT_MAX
+#endif
+
 /* is 'x' a power of 2? */
 #define isp2(x)		((x) > 0 && ((x) & ((x) - 1)) == 0)
 
@@ -313,7 +321,7 @@ static int b_unpack (lua_State *L) {
       case 'l': case 'L': case 'T': case 'i':  case 'I': {  /* integer types */
         int issigned = islower(opt);
         int64_t res = getinteger(data+pos, h.endian, issigned, size);
-        if (res >= INT_MIN && res <= INT_MAX) {
+        if (res >= LUA_MININTEGER && res <= LUA_MAXINTEGER) {
           lua_pushinteger(L, res);
         } else {
           lua_pushnumber(L, res);
