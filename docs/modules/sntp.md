@@ -67,6 +67,29 @@ sntp.sync("224.0.1.1",
 #### See also
 [`rtctime.set()`](rtctime.md#rtctimeset)
 
+## sntp.setpll
+
+This sets (and gets) the current PLL constants that control the pll that drives the rate adjustment on the `rtctime`. On each
+update the following calculation is performed, where `offset` is the time error in microseconds. `ctrlvar` is the loop control variable.
+
+```
+newrate = ctrlvar + offset * pll_a;
+ctrlvar = ctrlvar + offset * pll_b;
+```
+
+#### Syntax
+`sntp.setpll([pll_a], [pll_b], [ctrlvar])
+
+#### Parameters
+- `pll_a` This is the "proportional" multiplier used to drive the PLL. This value is divided by 2^32 before use.
+- `pll_b` This is the "integral" multiplier used to drive the PLL. This value is divided by 2^32 before use.
+- `ctrlvar` This is the value of the control variable in units of 2^-32 seconds per second.
+
+#### Returns
+- Previous value of `pll_a`
+- Previous value of `pll_b`
+- Previous value of the control variable.
+
 ## sntp.setoffset
 
 Sets the offset between the rtc clock and the NTP time. Note that NTP time has leap seconds in it and hence it runs slow when a leap second is

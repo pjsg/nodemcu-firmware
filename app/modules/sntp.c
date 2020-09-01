@@ -150,8 +150,13 @@ static uint8_t pending_LI;
 static int32_t next_midnight;
 static int32_t pll_increment;
 
-#define PLL_A   (1 << (32 - 11))
-#define PLL_B   (1 << (32 - 11 - 2))
+// These are 0.0001  (i.e. 1/10000). This seems to be a reasonable
+// compromise. nd more stable than the previous values.
+#define PLL_A   ((1 << (32 - 2)) / 2500)
+#define PLL_B   ((1 << (32 - 2)) / 2500)
+
+static int32_t pll_a = PLL_A;
+static int32_t pll_b = PLL_B;
 
 static void on_timeout(void *arg);
 static void on_long_timeout(void *arg);
@@ -259,8 +264,8 @@ static void sntp_handle_result(lua_State *L) {
     // Adjust rate
     // f is frequency -- f should be 1 << 32 for nominal -- but we store it as an offset
     sntp_dbg("delta=%d, increment=%d, ", (int32_t) state->best.delta, pll_increment);
-    int f = ((state->best.delta * PLL_A) >> 32) + pll_increment;
-    pll_increment += (state->best.delta * PLL_B) >> 32;
+    int f = ((state->best.delta * pll_a) >> 32) + pll_increment;
+    pll_increment += (state->best.delta * pll_b) >> 32;
     sntp_dbg("f=%d, increment=%d\n", f, pll_increment);
     rtctime_adjust_rate(f);
   } else {
@@ -755,6 +760,24 @@ static void on_long_timeout (void *arg)
   }
 }
 
+static int sntp_setpll (lua_State *L) {
+  lua_pushinteger(L, pll_a);
+  lua_pushinteger(L, pll_b);
+  lua_pushinteger(L, pll_increment);
+
+  // Now see if we change anything
+  if (lua_isnumber(L, 1)) {
+    pll_a = lua_tointeger(L, 1);
+  }
+  if (lua_isnumber(L, 2)) {
+    pll_b = lua_tointeger(L, 2);
+  }
+  if (lua_isnumber(L, 3)) {
+    pll_increment = lua_tointeger(L, 3);
+  }
+  return 3;
+}
+
 // sntp.sync (server or nil, syncfn or nil, errfn or nil)
 static int sntp_sync (lua_State *L)
 {
@@ -879,6 +902,7 @@ static int sntp_open(lua_State *L)
 // Module function map
 LROT_BEGIN(sntp, NULL, 0)
   LROT_FUNCENTRY( sync, sntp_sync )
+  LROT_FUNCENTRY( setpll, sntp_setpll )
 #ifdef LUA_USE_MODULES_RTCTIME
   LROT_FUNCENTRY( setoffset, sntp_setoffset )
   LROT_FUNCENTRY( getoffset, sntp_getoffset )
