@@ -72,7 +72,9 @@ sntp.sync("224.0.1.1",
 This sets (and gets) the current PLL constants that control the pll that drives the rate adjustment on the `rtctime`. On each
 update the following calculation is performed, where `offset` is the time error in microseconds. `ctrlvar` is the loop control variable.
 You want the pll_b value to be smaller than pll_a by least a factor of 3 -- otherwise the loop tends to oscillate. If pll_a = pll_b 
-then the oscillations never die out.
+then the oscillations never die out. The current defaults work well for most applications, but it may take a day or two of running
+for the control loop to accurately track the frequency of the crystal. It is important to save the rate fairly often so that it
+can be restored after a reboot.
 
 ```
 newrate = ctrlvar + offset * pll_a;
