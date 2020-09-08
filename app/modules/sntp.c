@@ -150,10 +150,10 @@ static uint8_t pending_LI;
 static int32_t next_midnight;
 static int32_t pll_increment;
 
-// These are 0.0001  (i.e. 1/10000). This seems to be a reasonable
+// These are 0.0001 & a quarter of it (i.e. 1/10000). This seems to be a reasonable
 // compromise. nd more stable than the previous values.
 #define PLL_A   ((1 << (32 - 2)) / 2500)
-#define PLL_B   ((1 << (32 - 2)) / 2500)
+#define PLL_B   ((1 << (32 - 2)) / 2500 / 4)
 
 static int32_t pll_a = PLL_A;
 static int32_t pll_b = PLL_B;
