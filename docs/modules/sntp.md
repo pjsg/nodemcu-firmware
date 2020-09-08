@@ -71,6 +71,8 @@ sntp.sync("224.0.1.1",
 
 This sets (and gets) the current PLL constants that control the pll that drives the rate adjustment on the `rtctime`. On each
 update the following calculation is performed, where `offset` is the time error in microseconds. `ctrlvar` is the loop control variable.
+You want the pll_b value to be smaller than pll_a by least a factor of 3 -- otherwise the loop tends to oscillate. If pll_a = pll_b 
+then the oscillations never die out.
 
 ```
 newrate = ctrlvar + offset * pll_a;
