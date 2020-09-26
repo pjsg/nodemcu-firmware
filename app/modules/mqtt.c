@@ -829,7 +829,7 @@ static int mqtt_socket_client( lua_State* L )
 
   lmqtt_userdata *mud;
   char tempid[20] = {0};
-  sprintf(tempid, "%s%x", "NodeMCU_", system_get_chip_id() );
+  snprintf(tempid, sizeof(tempid), "%s%x", "NodeMCU_", system_get_chip_id() );
   NODE_DBG(tempid);
   NODE_DBG("\n");
 

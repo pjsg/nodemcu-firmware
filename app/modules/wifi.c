@@ -105,7 +105,7 @@ static void wifi_scan_done(void *arg, STATUS status)
       }
       if(getap_output_format==1) //use new format(BSSID : SSID, RSSI, Authmode, Channel)
       {
-        sprintf(temp,MACSTR, MAC2STR(bss_link->bssid));
+        snprintf(temp, sizeof(temp), MACSTR, MAC2STR(bss_link->bssid));
         wifi_add_sprintf_field(L, temp, "%s,%d,%d,%d",
           ssid, bss_link->rssi, bss_link->authmode, bss_link->channel);
         NODE_DBG(MACSTR" : %s\n",MAC2STR(bss_link->bssid) , temp);//00 00 00 00 00 00
@@ -548,7 +548,7 @@ static int wifi_getmac( lua_State* L, uint8_t mode )
   char temp[64];
   uint8_t mac[6];
   wifi_get_macaddr(mode, mac);
-  sprintf(temp, MACSTR, MAC2STR(mac));
+  snprintf(temp, sizeof(temp), MACSTR, MAC2STR(mac));
   lua_pushstring( L, temp );
   return 1;
 }
@@ -577,11 +577,11 @@ static int wifi_getip( lua_State* L, uint8_t mode )
   }
   else
   {
-    sprintf(temp, "%d.%d.%d.%d", IP2STR(&pTempIp.ip) );
+    snprintf(temp, sizeof(temp), "%d.%d.%d.%d", IP2STR(&pTempIp.ip) );
     lua_pushstring( L, temp );
-    sprintf(temp, "%d.%d.%d.%d", IP2STR(&pTempIp.netmask) );
+    snprintf(temp, sizeof(temp), "%d.%d.%d.%d", IP2STR(&pTempIp.netmask) );
     lua_pushstring( L, temp );
-    sprintf(temp, "%d.%d.%d.%d", IP2STR(&pTempIp.gw) );
+    snprintf(temp, sizeof(temp), "%d.%d.%d.%d", IP2STR(&pTempIp.gw) );
     lua_pushstring( L, temp );
     return 3;
   }
@@ -605,7 +605,7 @@ static int wifi_getbroadcast( lua_State* L, uint8_t mode )
     uint32 broadcast_address32 = ~pTempIp.netmask.addr | subnet_mask32;
     broadcast_address.addr = broadcast_address32;
 
-    sprintf(temp, "%d.%d.%d.%d", IP2STR(&broadcast_address) );
+    snprintf(temp, sizeof(temp), "%d.%d.%d.%d", IP2STR(&broadcast_address) );
     lua_pushstring( L, temp );
 
     return 1;
@@ -684,7 +684,7 @@ static int wifi_station_get_ap_info4lua( lua_State* L )
     lua_pushstring(L, temp);
     lua_setfield(L, -2, "ssid");
 #if defined(WIFI_DEBUG)
-    sprintf(debug_temp, " %-6d %-32s ", i, temp);
+    snprintf(debug_temp, sizeof(debug_temp), " %-6d %-32s ", i, temp);
 #endif
 
     memset(temp, 0, sizeof(temp));
@@ -695,13 +695,13 @@ static int wifi_station_get_ap_info4lua( lua_State* L )
       lua_setfield(L, -2, "pwd");
     }
 #if defined(WIFI_DEBUG)
-    sprintf(debug_temp + strlen(debug_temp), "%-64s ", temp);
+    snprintf(debug_temp + strlen(debug_temp), sizeof(debug_temp) - strlen(debug_temp), "%-64s ", temp);
 #endif
 
     memset(temp, 0, sizeof(temp));
     if (config[i].bssid_set)
     {
-      sprintf(temp, MACSTR, MAC2STR(config[i].bssid));
+      snprintf(temp, sizeof(temp), MACSTR, MAC2STR(config[i].bssid));
       lua_pushstring(L, temp);
       lua_setfield(L, -2, "bssid");
     }
@@ -808,7 +808,7 @@ static int wifi_station_getconfig( lua_State* L, bool get_flash_cfg)
       lua_setfield(L, -2, "bssid_set");
 
       memset(temp, 0, sizeof(temp));
-      sprintf(temp, MACSTR, MAC2STR(sta_conf.bssid));
+      snprintf(temp, sizeof(temp), MACSTR, MAC2STR(sta_conf.bssid));
       lua_pushstring( L, temp);
       lua_setfield(L, -2, "bssid");
 
@@ -823,7 +823,7 @@ static int wifi_station_getconfig( lua_State* L, bool get_flash_cfg)
       memcpy(temp, sta_conf.password, sizeof(sta_conf.password));
       lua_pushstring(L, temp);
       lua_pushinteger( L, sta_conf.bssid_set);
-      sprintf(temp, MACSTR, MAC2STR(sta_conf.bssid));
+      snprintf(temp, sizeof(temp), MACSTR, MAC2STR(sta_conf.bssid));
       lua_pushstring( L, temp);
       return 4;
     }
@@ -1792,7 +1792,7 @@ static int wifi_ap_listclient( lua_State* L )
   struct station_info * next_station;
   while (station != NULL)
   {
-    sprintf(temp, MACSTR, MAC2STR(station->bssid));
+    snprintf(temp, sizeof(temp), MACSTR, MAC2STR(station->bssid));
     wifi_add_sprintf_field(L, temp, IPSTR, IP2STR(&station->ip));
     station = STAILQ_NEXT(station, next);
   }
@@ -1826,9 +1826,9 @@ static int wifi_ap_dhcp_config( lua_State* L )
   ip4_addr4(&lease.end_ip) += config.max_connection - 1;
 
   char temp[64];
-  sprintf(temp, IPSTR, IP2STR(&lease.start_ip));
+  snprintf(temp, sizeof(temp), IPSTR, IP2STR(&lease.start_ip));
   lua_pushstring(L, temp);
-  sprintf(temp, IPSTR, IP2STR(&lease.end_ip));
+  snprintf(temp, sizeof(temp), IPSTR, IP2STR(&lease.end_ip));
   lua_pushstring(L, temp);
 
   // note: DHCP max range = 101 from start_ip to end_ip
@@ -1973,20 +1973,20 @@ void wifi_change_default_host_name(void)
   wifi_get_macaddr(STATION_IF, mac);
 
 #ifndef WIFI_STA_HOSTNAME
-  sprintf(temp, "NODE-%X%X%X", (mac)[3], (mac)[4], (mac)[5]);
+  snprintf(temp, sizeof(temp), "NODE-%X%X%X", (mac)[3], (mac)[4], (mac)[5]);
 #elif defined(WIFI_STA_HOSTNAME) && !defined(WIFI_STA_HOSTNAME_APPEND_MAC)
   if(wifi_sta_checkhostname(WIFI_STA_HOSTNAME, strlen(WIFI_STA_HOSTNAME))){
-    sprintf(temp, "%s", WIFI_STA_HOSTNAME);
+    snprintf(temp, sizeof(temp), "%s", WIFI_STA_HOSTNAME);
   }
   else{
-    sprintf(temp, "NODE-%X%X%X", (mac)[3], (mac)[4], (mac)[5]);
+    snprintf(temp, sizeof(temp), "NODE-%X%X%X", (mac)[3], (mac)[4], (mac)[5]);
   }
 #elif defined(WIFI_STA_HOSTNAME) && defined(WIFI_STA_HOSTNAME_APPEND_MAC)
   if(strlen(WIFI_STA_HOSTNAME) <= 26 && wifi_sta_checkhostname(WIFI_STA_HOSTNAME, strlen(WIFI_STA_HOSTNAME))){
-    sprintf(temp, "%s%X%X%X", WIFI_STA_HOSTNAME, (mac)[3], (mac)[4], (mac)[5]);
+    snprintf(temp, sizeof(temp), "%s%X%X%X", WIFI_STA_HOSTNAME, (mac)[3], (mac)[4], (mac)[5]);
   }
   else{
-    sprintf(temp, "NODE-%X%X%X", (mac)[3], (mac)[4], (mac)[5]);
+    snprintf(temp, sizeof(temp), "NODE-%X%X%X", (mac)[3], (mac)[4], (mac)[5]);
   }
 #endif
 

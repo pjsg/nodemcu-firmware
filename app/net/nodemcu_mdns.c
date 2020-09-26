@@ -49,6 +49,7 @@
 #include "os_type.h"
 #include "user_interface.h"
 #include <string.h>
+#include <stdio.h>
 #include "nodemcu_mdns.h"
 
 #if 0
@@ -999,7 +1000,7 @@ nodemcu_mdns_close(void)
 static void ICACHE_FLASH_ATTR
 mdns_set_servicename(const char *name) {
 	char tmpBuf[128];
-	os_sprintf(tmpBuf, "_%s._tcp.local", name);
+	snprintf(tmpBuf, sizeof(tmpBuf), "_%s._tcp.local", name);
 	if (service_name_with_suffix) {
 	  os_free(service_name_with_suffix);
 	}

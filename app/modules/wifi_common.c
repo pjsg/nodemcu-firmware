@@ -10,7 +10,7 @@ void wifi_add_sprintf_field(lua_State* L, char* name, char* string, ...)
   char buffer[256];
   va_list arglist;
   va_start( arglist, string );
-  vsprintf( buffer, string, arglist );
+  vsnprintf( buffer, sizeof(buffer), string, arglist );
   va_end( arglist );
   lua_pushstring(L, buffer);
   lua_setfield(L, -2,  name);

@@ -817,7 +817,7 @@ static int sntp_sync (lua_State *L)
       for (i = 0; i < 4; i++) {
         lua_pushinteger(L, i + 1);
         char buf[64];
-        sprintf(buf, "%d.nodemcu.pool.ntp.org", i);
+        snprintf(buf, sizeof(buf), "%d.nodemcu.pool.ntp.org", i);
         lua_pushstring(L, buf);
         lua_settable(L, -3);
       }

@@ -139,7 +139,7 @@ void notifyDccMsg( DCC_MSG * Msg ) {
   cbAddFieldInteger(L, Msg->PreambleBits, "PreambleBits");
   char field[8];
   for(uint8_t i = 0; i< MAX_DCC_MESSAGE_LEN; i++ ) {
-    ets_sprintf(field, "Data%d", i);
+    snprintf(field, sizeof(field), "Data%d", i);
     cbAddFieldInteger(L, Msg->Data[i], field);
   }
   luaL_pcallx(L, 2, 0);

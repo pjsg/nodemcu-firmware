@@ -589,7 +589,7 @@ static int ws2812_buffer_tostring(lua_State* L) {
         luaL_addchar(&result, ',');
       }
       char numbuf[5];
-      sprintf(numbuf, "%d", buffer->values[p]);
+      snprintf(numbuf, sizeof(numbuf), "%d", buffer->values[p]);
       luaL_addstring(&result, numbuf);
     }
     luaL_addchar(&result, ')');

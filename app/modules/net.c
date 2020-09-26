@@ -179,7 +179,7 @@ static void net_dns_cb(const char *name, ip_addr_t *ipaddr, void *arg) {
     if (addr.addr != 0xFFFFFFFF) {
       char iptmp[16];
       bzero(iptmp, 16);
-      ets_sprintf(iptmp, IPSTR, IP2STR(&addr.addr));
+      snprintf(iptmp, sizeof(iptmp), IPSTR, IP2STR(&addr.addr));
       lua_pushstring(L, iptmp);
     } else {
       lua_pushnil(L);
@@ -207,7 +207,7 @@ static void net_recv_cb(lnet_userdata *ud, struct pbuf *p, ip_addr_t *addr, u16_
   if (ud->type == TYPE_UDP_SOCKET)
   {
     num_args += 2;
-    ets_sprintf(iptmp, IPSTR, IP2STR(&addr->addr));
+    snprintf(iptmp, sizeof(iptmp), IPSTR, IP2STR(&addr->addr));
   }
 
   lua_State *L = lua_getstate();
@@ -666,7 +666,7 @@ int net_getpeer( lua_State *L ) {
   }
   char addr_str[16];
   bzero(addr_str, 16);
-  ets_sprintf(addr_str, IPSTR, IP2STR(&addr.addr));
+  snprintf(addr_str, sizeof(addr_str), IPSTR, IP2STR(&addr.addr));
   lua_pushinteger(L, port);
   lua_pushstring(L, addr_str);
   return 2;
@@ -701,7 +701,7 @@ int net_getaddr( lua_State *L ) {
   }
   char addr_str[16];
   bzero(addr_str, 16);
-  ets_sprintf(addr_str, IPSTR, IP2STR(&addr.addr));
+  snprintf(addr_str, sizeof(addr_str), IPSTR, IP2STR(&addr.addr));
   lua_pushinteger(L, port);
   lua_pushstring(L, addr_str);
   return 2;
@@ -874,7 +874,7 @@ static void net_dns_static_cb(const char *name, ip_addr_t *ipaddr, void *callbac
 
   if (addr.addr != 0xFFFFFFFF) {
     char iptmp[20];
-    size_t ipl = sprintf(iptmp, IPSTR, IP2STR(&addr.addr));
+    size_t ipl = snprintf(iptmp, sizeof(iptmp), IPSTR, IP2STR(&addr.addr));
     lua_pushlstring(L, iptmp, ipl);
   } else {
     lua_pushnil(L);
@@ -947,7 +947,7 @@ static int net_getdnsserver( lua_State* L ) {
     lua_pushnil( L );
   } else {
     char temp[20] = {0};
-    sprintf(temp, IPSTR, IP2STR( &ipaddr.addr ) );
+    snprintf(temp, sizeof(temp), IPSTR, IP2STR( &ipaddr.addr ) );
     lua_pushstring( L, temp );
   }
 
