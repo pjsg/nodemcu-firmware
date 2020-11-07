@@ -437,7 +437,7 @@ void wifi_pmSleep_suspend_CB(void)
   {
     lua_State* L = lua_getstate(); // Get main Lua thread pointer
     lua_rawgeti(L, LUA_REGISTRYINDEX, wifi_suspend_cb_ref); // Push suspend callback onto stack
-    luaL_unref(L, wifi_suspend_cb_ref); // remove suspend callback from LUA_REGISTRY
+    luaL_unref(L, LUA_REGISTRYINDEX, wifi_suspend_cb_ref); // remove suspend callback from LUA_REGISTRY
     wifi_suspend_cb_ref = LUA_NOREF; // Update variable since reference is no longer valid
     luaL_pcallx(L, 0, 0); // Execute suspend callback
   }
@@ -1969,28 +1969,33 @@ void wifi_change_default_host_name(void)
   uint8 opmode_temp=wifi_get_opmode();
   wifi_set_opmode_current(STATION_MODE);
   char temp[33] = {0};//32 chars + NULL
+
+#if defined(WIFI_STA_HOSTNAME)
+  const char *hostname = WIFI_STA_HOSTNAME;
+#else
+  const char *hostname = "NODE";
+#endif
+
+#if defined(WIFI_STA_HOSTNAME_APPEND_MAC) || !defined(WIFI_STA_HOSTNAME)
   uint8_t mac[6];
   wifi_get_macaddr(STATION_IF, mac);
 
-#ifndef WIFI_STA_HOSTNAME
-  sprintf(temp, "NODE-%X%X%X", (mac)[3], (mac)[4], (mac)[5]);
-#elif defined(WIFI_STA_HOSTNAME) && !defined(WIFI_STA_HOSTNAME_APPEND_MAC)
-  if(wifi_sta_checkhostname(WIFI_STA_HOSTNAME, strlen(WIFI_STA_HOSTNAME))){
-    sprintf(temp, "%s", WIFI_STA_HOSTNAME);
-  }
-  else{
-    sprintf(temp, "NODE-%X%X%X", (mac)[3], (mac)[4], (mac)[5]);
-  }
-#elif defined(WIFI_STA_HOSTNAME) && defined(WIFI_STA_HOSTNAME_APPEND_MAC)
-  if(strlen(WIFI_STA_HOSTNAME) <= 26 && wifi_sta_checkhostname(WIFI_STA_HOSTNAME, strlen(WIFI_STA_HOSTNAME))){
-    sprintf(temp, "%s%X%X%X", WIFI_STA_HOSTNAME, (mac)[3], (mac)[4], (mac)[5]);
-  }
-  else{
-    sprintf(temp, "NODE-%X%X%X", (mac)[3], (mac)[4], (mac)[5]);
-  }
+  int len = snprintf(temp, sizeof(temp), "%s-%02X%02X%02X", hostname, (mac)[3], (mac)[4], (mac)[5]);
+#else
+  int len = snprintf(temp, sizeof(temp), "%s", hostname);
 #endif
 
-  wifi_station_set_hostname((char*)temp);
+#if defined(WIFI_STA_HOSTNAME)
+  if (wifi_sta_checkhostname(temp, len)) {
+#endif
+
+  wifi_station_set_hostname(temp);
+
+#if defined(WIFI_STA_HOSTNAME)
+  } else {
+    dbg_printf("\nInvalid hostname: %s\n", temp);
+  }
+#endif
 
   if(opmode_temp != wifi_get_opmode()){
     wifi_set_opmode_current(opmode_temp);

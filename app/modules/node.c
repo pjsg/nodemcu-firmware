@@ -16,6 +16,10 @@
 #define CPU80MHZ 80
 #define CPU160MHZ 160
 
+#ifdef PLATFORM_STARTUP_COUNT
+platform_startup_counts_t platform_startup_counts;
+#endif
+
 #define DELAY2SEC 2000
 
 #ifndef LUA_MAXINTEGER
@@ -52,8 +56,8 @@ static int node_setonerror( lua_State* L ) {
   return 0;
 }
 
-
 // Lua: startupcommand(string)
+// The lua.startup({command="string"}) should be used instead
 static int node_startupcommand( lua_State* L ) {
   size_t l, lrcr;
   const char *cmd = luaL_checklstring(L, 1, &l);
@@ -62,6 +66,91 @@ static int node_startupcommand( lua_State* L ) {
   return 1;
 }
 
+// Lua: startup([table])
+static int node_startup( lua_State* L ) {
+  uint32_t option, *option_p;
+
+  option = 0;
+
+  if (platform_rcr_read(PLATFORM_RCR_STARTUP_OPTION, (void **) &option_p) == sizeof(option)) {
+    option = *option_p;
+  }
+
+  if (lua_gettop(L) > 0) {
+    // Lets hope it is a table
+    luaL_checktype(L, 1, LUA_TTABLE);
+
+    int has_entries = 0;
+    lua_pushnil(L);
+    while (lua_next(L, 1) != 0) {
+      if (lua_isstring(L, -2)) {
+        const char *key = lua_tostring(L, -2);
+        has_entries++;
+
+        if (strcmp(key, "command") == 0) {
+          size_t l, lrcr;
+          const char *cmd = luaL_checklstring(L, -1, &l);
+          lrcr = platform_rcr_write(PLATFORM_RCR_INITSTR, cmd, l+1);
+          if (lrcr == ~0) {
+            return luaL_error( L, "failed to set command" );
+          }
+        }
+
+        if (strcmp(key, "banner") == 0) {
+          int enable = lua_toboolean(L, -1);
+          option = (option & ~STARTUP_OPTION_NO_BANNER) | (enable ? 0 : STARTUP_OPTION_NO_BANNER);
+        }
+
+        if (strcmp(key, "frequency") == 0) {
+          int frequency = lua_tointeger(L, -1);
+          option = (option & ~STARTUP_OPTION_CPU_FREQ_MAX) | (frequency == CPU160MHZ ? STARTUP_OPTION_CPU_FREQ_MAX : 0);
+        }
+
+        if (strcmp(key, "delay_mount") == 0) {
+          int enable = lua_toboolean(L, -1);
+          option = (option & ~STARTUP_OPTION_DELAY_MOUNT) | (enable ? STARTUP_OPTION_DELAY_MOUNT : 0);
+        }
+      }
+      lua_pop(L, 1);
+    }
+
+    if (has_entries) {
+      platform_rcr_write(PLATFORM_RCR_STARTUP_OPTION, &option, sizeof(option));
+    } else {
+      // This is a special reset everything case
+      platform_rcr_delete(PLATFORM_RCR_STARTUP_OPTION);
+      platform_rcr_delete(PLATFORM_RCR_INITSTR);
+      option = 0;
+    }
+  }
+
+  // Now we construct the return table
+  lua_createtable(L, 0, 4);
+
+  const char *init_string;
+  size_t l;
+
+  l = platform_rcr_read(PLATFORM_RCR_INITSTR, (void **) &init_string);
+  if (l != ~0) {
+    // when reading it back it can be padded with nulls
+    while (l > 0 && init_string[l - 1] == 0) {
+      l--;
+    }
+    lua_pushlstring(L, init_string, l);
+    lua_setfield(L, -2, "command");
+  }
+
+  lua_pushboolean(L, !(option & STARTUP_OPTION_NO_BANNER));
+  lua_setfield(L, -2, "banner");
+
+  lua_pushboolean(L, (option & STARTUP_OPTION_DELAY_MOUNT));
+  lua_setfield(L, -2, "delay_mount");
+
+  lua_pushinteger(L, (option & STARTUP_OPTION_CPU_FREQ_MAX) ? CPU160MHZ : CPU80MHZ);
+  lua_setfield(L, -2, "frequency");
+
+  return 1;
+}
 
 // Lua: restart()
 static int node_restart( lua_State* L )
@@ -625,6 +714,30 @@ static int node_random (lua_State *L) {
   return 1;
 }
 
+// Just return the startup as an array of tables
+static int node_startup_counts(lua_State *L) {
+  // If the first argument is a number, then add an entry for that line
+  if (lua_isnumber(L, 1)) {
+    int lineno = lua_tointeger(L, 1);
+    STARTUP_ENTRY(lineno);
+  }
+  lua_createtable(L, platform_startup_counts.used, 0);
+  for (int i = 0; i < platform_startup_counts.used; i++) {
+    const platform_count_entry_t *p = &platform_startup_counts.entries[i];
+
+    lua_createtable(L, 0, 3);
+    lua_pushstring(L, p->name);
+    lua_setfield(L, -2, "name");
+    lua_pushinteger(L, p->line);
+    lua_setfield(L, -2, "line");
+    lua_pushinteger(L, p->ccount);
+    lua_setfield(L, -2, "ccount");
+
+    lua_rawseti(L, -2, i + 1);
+  }
+  return 1;
+}
+
 #ifdef DEVELOPMENT_TOOLS
 static int node_peek(lua_State *L) {
   luaL_Buffer b;
@@ -662,6 +775,30 @@ static int node_writercr (lua_State *L) {
   lua_pushinteger(L, n);
   return 1;
 }
+
+#if LUA_VERSION_NUM > 501
+static int node_int2float(lua_State *L) {
+  union {
+    lua_Integer i;
+    lua_Float f;
+  } u;
+
+  u.i = luaL_checkinteger(L, 1);
+  lua_pushnumber(L, u.f);
+  return 1;
+}
+
+static int node_float2int(lua_State *L) {
+  union {
+    lua_Integer i;
+    lua_Float f;
+  } u;
+
+  u.f = luaL_checknumber(L, 1);
+  lua_pushinteger(L, u.i);
+  return 1;
+}
+#endif
 #endif
 
 // Lua: n = node.LFS.reload(lfsimage)
@@ -669,6 +806,12 @@ static int node_lfsreload (lua_State *L) {
   lua_settop(L, 1);
   luaL_lfsreload(L);
   return 1;
+}
+
+// Lua: n = node.flashreload(lfsimage)
+static int lua_lfsreload_deprecated (lua_State *L) {
+  platform_print_deprecation_note("node.flashreload", "soon. Use node.LFS interface instead");
+  return node_lfsreload (L);
 }
 
 // Lua: n = node.flashindex(module)
@@ -769,8 +912,9 @@ static void delete_partition(partition_item_t *p, int n) {
 #define IROM0_PARTITION  (SYSTEM_PARTITION_CUSTOMER_BEGIN + NODEMCU_IROM0TEXT_PARTITION)
 #define LFS_PARTITION    (SYSTEM_PARTITION_CUSTOMER_BEGIN + NODEMCU_LFS0_PARTITION)
 #define SPIFFS_PARTITION (SYSTEM_PARTITION_CUSTOMER_BEGIN + NODEMCU_SPIFFS0_PARTITION)
+#define SYSTEM_PARAMETER_SIZE  0x3000
 
-// Lua: node.setpartitiontable(pt_settings)
+// Lua: node.setpartitiontable(ptvals)
 static int node_setpartitiontable (lua_State *L) {
   partition_item_t *rcr_pt = NULL, *pt;
   uint32_t flash_size = flash_rom_get_size_byte();
@@ -779,6 +923,7 @@ static int node_setpartitiontable (lua_State *L) {
   uint32_t n = i / sizeof(partition_item_t);
   uint32_t param[max_pt] = {SKIP, SKIP, SKIP, SKIP};
 
+/* stack 1=ptvals, 2=pt_map, 3=key, 4=ptval[key], 5=pt_map[key] */ 
   luaL_argcheck(L, lua_istable(L, 1), 1, "must be table");
   lua_settop(L, 1);
   /* convert input table into 4 option array */
@@ -790,9 +935,8 @@ static int node_setpartitiontable (lua_State *L) {
     lua_pushvalue(L, 3);  /* dup key to index 5 */
     lua_rawget(L, 2);     /* lookup in pt_map */
     luaL_argcheck(L, !lua_isnil(L, -1), 1, "invalid partition setting");
-    param[lua_tointeger(L, 5)] = lua_tointeger(L, 4);
-    /* removes 'value'; keeps 'key' for next iteration */
-    lua_pop(L, 2);  /* discard value and lookup */
+    param[lua_tointeger(L, 5)] = lua_tounsigned(L, 4);
+    lua_pop(L, 2);  /* discard value and lookup; keeps 'key' for next iteration */
   }
  /*
   * Allocate a scratch Partition Table as userdata on the Lua stack, and copy the
@@ -812,43 +956,34 @@ static int node_setpartitiontable (lua_State *L) {
       n++;
 
     } else if (p->type == LFS_PARTITION) {
+      // update the LFS options if set
+      if (param[lfs_addr] != SKIP) 
+        p->addr = param[lfs_addr];
+      if (param[lfs_size] != SKIP) 
+        p->size = param[lfs_size];
       if (p[1].type != SPIFFS_PARTITION) {
         // if the SPIFFS partition is not following LFS then slot a blank one in
         insert_partition(p + 1, n-i-1, SPIFFS_PARTITION, 0);
         n++;
       }
-      // update the LFS options if set
-      if (param[lfs_addr] != SKIP) {
-        p->addr = param[lfs_addr];
-      }
-      if (param[lfs_size] != SKIP) {
-        p->size = param[lfs_size];
-      }
+
     } else if (p->type == SPIFFS_PARTITION) {
       // update the SPIFFS options if set
-      if (param[spiffs_addr] != SKIP) {
+      if (param[spiffs_size] != SKIP) {
+        p->size = param[spiffs_size];
+        p->addr = (param[spiffs_addr] != SKIP) ? param[spiffs_addr] :
+                    ((p->size <= flash_size - SYSTEM_PARAMETER_SIZE - 0x100000)
+                     ? 0x100000 : last);
+      } else if (param[spiffs_addr] != SKIP) {
         p->addr = param[spiffs_addr];
-        p->size = SKIP;
       }
+#if 0
       if (param[spiffs_size] != SKIP) {
         // BOTCH: - at the moment the firmware doesn't boot if the SPIFFS partition
         //          is deleted so the minimum SPIFFS size is 64Kb
         p->size = param[spiffs_size] > 0x10000 ? param[spiffs_size] : 0x10000;
       }
-      if (p->size == SKIP) {
-        if (p->addr < 0) {
-          // This allocate all the remaining flash to SPIFFS
-          p->addr = last;
-          p->size = flash_size - last;
-        } else {
-          p->size = flash_size - p->addr;
-        }
-      } else if (/* size is specified && */ p->addr == 0) {
-        // if the is addr not specified then start SPIFFS at 1Mb
-        // boundary if the size will fit otherwise make it consecutive
-        // to the previous partition.
-        p->addr = (p->size <= flash_size - 0x100000) ? 0x100000 : last;
-      }
+#endif
     }
 
     if (p->size == 0) {
@@ -861,14 +996,16 @@ static int node_setpartitiontable (lua_State *L) {
         p->size & (INTERNAL_FLASH_SECTOR_SIZE - 1) ||
         p->addr < last ||
         p->addr + p->size > flash_size) {
-        luaL_error(L, "value out of range");
+        luaL_error(L, "Partition value out of range");
       }
+      last = p->addr + p->size;
     }
   }
-//  for (i = 0; i < n; i ++)
-//    dbg_printf("Partition %d: %04x %06x %06x\n", i, pt[i].type, pt[i].addr, pt[i].size);
-    platform_rcr_write(PLATFORM_RCR_PT, pt, n*sizeof(partition_item_t));
-    while(1); // Trigger WDT; the new PT will be loaded on reboot
+  for (i = 0; i < n; i ++)
+    dbg_printf("Partition %d: %04x %06x %06x\n", i, pt[i].type, pt[i].addr, pt[i].size);
+
+  platform_rcr_write(PLATFORM_RCR_PT, pt, n*sizeof(partition_item_t));
+  while(1); // Trigger WDT; the new PT will be loaded on reboot
 
   return 0;
 }
@@ -897,10 +1034,12 @@ LROT_BEGIN(node, NULL, 0)
   LROT_FUNCENTRY( heap, node_heap )
   LROT_FUNCENTRY( info, node_info )
   LROT_TABENTRY( task, node_task )
+  LROT_FUNCENTRY( flashreload, lua_lfsreload_deprecated )
   LROT_FUNCENTRY( flashindex, node_lfsindex )
   LROT_TABENTRY( LFS, node_lfs )
   LROT_FUNCENTRY( setonerror, node_setonerror )
   LROT_FUNCENTRY( startupcommand, node_startupcommand )
+  LROT_FUNCENTRY( startup, node_startup )
   LROT_FUNCENTRY( restart, node_restart )
   LROT_FUNCENTRY( dsleep, node_deepsleep )
   LROT_FUNCENTRY( dsleepMax, dsleepMax )
@@ -911,6 +1050,9 @@ LROT_BEGIN(node, NULL, 0)
 #ifdef DEVELOPMENT_TOOLS
   LROT_FUNCENTRY( readrcr, node_readrcr )
   LROT_FUNCENTRY( writercr, node_writercr )
+#endif
+#ifdef PLATFORM_STARTUP_COUNT
+  LROT_FUNCENTRY( startupcounts, node_startup_counts )
 #endif
   LROT_FUNCENTRY( chipid, node_chipid )
   LROT_FUNCENTRY( flashid, node_flashid )
@@ -934,6 +1076,10 @@ LROT_BEGIN(node, NULL, 0)
 #ifdef DEVELOPMENT_TOOLS
   LROT_FUNCENTRY( osprint, node_osprint )
   LROT_FUNCENTRY( peek, node_peek )
+#if LUA_VERSION_NUM > 501
+  LROT_FUNCENTRY( int2float, node_int2float )
+  LROT_FUNCENTRY( float2int, node_float2int )
+#endif
 #endif
   LROT_FUNCENTRY( getpartitiontable, node_getpartitiontable )
   LROT_FUNCENTRY( setpartitiontable, node_setpartitiontable )

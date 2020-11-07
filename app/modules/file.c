@@ -4,6 +4,7 @@
 #include "lauxlib.h"
 #include "lmem.h"
 #include "platform.h"
+#include "spiffs/nodemcu_spiffs.h"
 
 #include <stdint.h>
 #include "vfs.h"
@@ -28,6 +29,17 @@ static int rtc_cb_ref = LUA_NOREF;
 typedef struct _file_fd_ud {
   int fd;
 } file_fd_ud;
+
+static void do_flash_mount() {
+    if (!vfs_mount("/FLASH", 0)) {
+        // Failed to mount -- try reformat
+        dbg_printf("Formatting file system. Please wait...\n");
+        if (!vfs_format()) {
+            NODE_ERR( "\n*** ERROR ***: unable to format. FS might be compromised.\n" );
+            NODE_ERR( "It is advised to re-flash the NodeMCU image.\n" );
+        }
+    }
+}
 
 static void table2tm( lua_State *L, vfs_time *tm )
 {
@@ -442,6 +454,9 @@ static int file_g_read( lua_State* L, int n, int16_t end_char, int fd )
     int nread   = vfs_read(fd, p, nwanted);
 
     if (nread == VFS_RES_ERR || nread == 0) {
+      if (j > 0) {
+        break;
+      }
       lua_pushnil(L);
       return 1;
     }
@@ -449,7 +464,7 @@ static int file_g_read( lua_State* L, int n, int16_t end_char, int fd )
     for (i = 0; i < nread; ++i) {
       luaL_addchar(&b, p[i]);
       if (p[i] == end_char) {
-        vfs_lseek(fd, -nread + j + i + 1, VFS_SEEK_CUR); //reposition after end char found
+        vfs_lseek(fd, -nread + i + 1, VFS_SEEK_CUR); //reposition after end char found
         nread = 0;   // force break on outer loop
         break;
       }
@@ -700,13 +715,11 @@ LROT_END(file, NULL, 0)
 
 
 int luaopen_file( lua_State *L ) {
-  if (!vfs_mount("/FLASH", 0)) {
-      // Failed to mount -- try reformat
-      dbg_printf("Formatting file system. Please wait...\n");
-      if (!vfs_format()) {
-          NODE_ERR( "\n*** ERROR ***: unable to format. FS might be compromised.\n" );
-          NODE_ERR( "It is advised to re-flash the NodeMCU image.\n" );
-      }
+  int startup_option = platform_rcr_get_startup_option();
+  if ((startup_option & STARTUP_OPTION_DELAY_MOUNT) == 0) {
+      do_flash_mount();
+  } else {
+      myspiffs_set_automount(do_flash_mount);
   }
   luaL_rometatable( L, "file.vol",  LROT_TABLEREF(file_vol));
   luaL_rometatable( L, "file.obj",  LROT_TABLEREF(file_obj));

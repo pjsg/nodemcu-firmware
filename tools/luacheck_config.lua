@@ -112,6 +112,15 @@ stds.nodemcu_libs = {
         temp = empty
       }
     },
+    bme280_math = {
+      fields = {
+        altitude = empty,
+        dewpoint = empty,
+        qfe2qnh = empty,
+        read = empty,
+        setup = empty
+      }
+    },
     bme680 = {
       fields = {
         altitude = empty,
@@ -430,6 +439,16 @@ stds.nodemcu_libs = {
             MEDIUM_PRIORITY = empty,
             HIGH_PRIORITY = empty
           }
+        },
+        LFS = {
+          read_only = true, 
+          fields = {
+            config = empty,
+            get = empty,
+            list = empty,
+            reload = empty,
+            time = empty
+          }
         }
       }
     },
@@ -717,6 +736,11 @@ stds.nodemcu_libs = {
         createClient = empty
       }
     },
+    wiegand = {
+      fields = {
+        create = empty
+      }
+    },
     wifi = {
       fields = {
         COUNTRY_AUTO = empty,
@@ -919,7 +943,8 @@ stds.nodemcu_libs = {
     pack = empty,
     unpack  = empty,
     size = empty,
-    package = {fields = {seeall = read_write}}
+    package = {fields = {seeall = read_write}},
+    _ENV = empty
   }
 }
 

@@ -178,7 +178,9 @@
 // alphanumeric characters. If you are imaging multiple modules with this
 // firmware then you must also define WIFI_STA_HOSTNAME_APPEND_MAC to
 // append the last 3 octets of the MAC address.  Note that the total
-// Hostname MUST be 32 chars or less.
+// Hostname MUST be 32 chars or less. If the resulting hostname is 
+// invalid, then it will not be used, and a message will be printed
+// during boot.
 
 //#define WIFI_STA_HOSTNAME "NodeMCU"
 //#define WIFI_STA_HOSTNAME_APPEND_MAC
@@ -187,7 +189,7 @@
 // If you use the enduser_setup module, then you can also set the default
 // SSID when this module is running in AP mode.
 
-#define ENDUSER_SETUP_AP_SSID "SetupGadget"
+#define ENDUSER_SETUP_AP_SSID "NodeMCU"
 
 
 // I2C software driver partially supports use of GPIO16 (D0) pin for SCL line.
@@ -261,6 +263,11 @@
 #  define SPIFFS_MAX_FILESYSTEM_SIZE      0xFFFFFFFF
 #endif
 //#define SPIFFS_SIZE_1M_BOUNDARY
+
+// The following define enables recording of the number of CPU cycles at certain
+// points in the startup process. It can be used to see where the time is being
+// consumed. It enables a nice node.startupcounts() function to get the results.
+//#define PLATFORM_STARTUP_COUNT
 
 #define LUA_TASK_PRIO             USER_TASK_PRIO_0
 #define LUA_PROCESS_LINE_SIG      2

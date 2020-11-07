@@ -985,6 +985,20 @@ uint32_t platform_rcr_read (uint8_t rec_id, void **rec) {
     return ~0;
 }
 
+uint32_t platform_rcr_get_startup_option() {
+  static uint32_t option = ~0;
+  uint32_t *option_p;
+
+  if (option == ~0) {
+    option = 0;
+
+    if (platform_rcr_read(PLATFORM_RCR_STARTUP_OPTION, (void **) &option_p) == sizeof(*option_p)) {
+      option = *option_p;
+    }
+  }
+  return option;
+}
+
 uint32_t platform_rcr_delete (uint8_t rec_id) {
   uint32_t *rec = NULL;
   platform_rcr_read(rec_id, (void**)&rec);
@@ -1150,8 +1164,4 @@ platform_task_handle_t platform_task_get_id (platform_task_callback_t t) {
   }
   TQB.task_func[TQB.task_count++] = t;
   return TH_MONIKER + ((TQB.task_count-1) << TH_SHIFT);
-}
-
-bool platform_post (uint8 prio, platform_task_handle_t handle, platform_task_param_t par) {
-  return system_os_post(prio, handle | prio, par);
 }
