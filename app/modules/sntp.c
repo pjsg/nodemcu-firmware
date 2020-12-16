@@ -68,7 +68,7 @@ struct netif * eagle_lwip_getif(uint8 index);
 //#define US_TO_FRAC(us)          ((((uint64_t) (us)) << 32) / 1000000)
 #define US_TO_FRAC(us)          (div1m(((uint64_t) (us)) << 32))
 #define SUS_TO_FRAC(us)         ((((int64_t) (us)) << 32) / 1000000)
-//#define US_TO_FRAC16(us)        ((((uint64_t) (us)) << 16) / 1000000)
+#define US_TO_FRAC16(us)        ((((uint64_t) (us)) << 16) / 1000000)
 #define FRAC16_TO_US(frac)      ((((uint64_t) (frac)) * 1000000) >> 16)
 
 typedef enum {
@@ -468,6 +468,14 @@ static void record_result(int server_pos, ip_addr_t *addr, int64_t delta, int st
   int delay = root_delay * 2 + delay_frac;
   if (state->last_server_pos == server_pos) {
     delay -= delay >> 2;               // 25% bonus to last best server
+  }
+
+  // If the returned time is nowhere close to the current time, then add an extra two seconds of delay
+  // This will reduce the chance that we chose this clock. Really we ought to aggregate all the 
+  // answers, and throw out the ones that are way out of line, and then pick the best from the
+  // pool that is left. 
+  if (delta > (1ll << 32) || delta < (-1ll << 32)) {
+    delay += US_TO_FRAC16(2000000);
   }
 
   if (!state->best.stratum || delay < state->best.delay) {
