@@ -205,7 +205,7 @@
 // It does not support changing speed, have only one bus id = 0, does not support GPIO16
 // and works only in Standard(slow) mode with clock speed around 50kHz.
 
-#define I2C_MASTER_OLD_VERSION
+// #define I2C_MASTER_OLD_VERSION
 
 
 // The following sections are only relevant for those developers who are
@@ -230,7 +230,7 @@
 // directory basis. If you do this then you can also set the corresponding
 // compile options (-O0 -ggdb) on a per directory as well.
 
-#define DEVELOPMENT_TOOLS
+//#define DEVELOPMENT_TOOLS
 //#define DEVELOPMENT_USE_GDB
 //#define DEVELOPMENT_BREAK_ON_STARTUP_PIN 1
 //#define DEVELOP_VERSION
