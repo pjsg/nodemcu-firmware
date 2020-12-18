@@ -5,6 +5,7 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 #include "lfs_flashbd.h"
+#include "platform.h"
 
 #define LFS_RAMBD_TRACE(...)
 
@@ -86,10 +87,7 @@ int lfs_flashbd_read(const struct lfs_config *cfg, lfs_block_t block,
     LFS_ASSERT(size % cfg->read_size == 0);
     LFS_ASSERT(block < cfg->block_count);
 
-#if 0
-    // read data
-    memcpy(buffer, &bd->buffer[block*cfg->block_size + off], size);
-#endif
+    platform_flash_read(buffer, bd->base_addr + block * cfg->block_size + off, size);
 
     LFS_RAMBD_TRACE("lfs_flashbd_read -> %d", 0);
     return 0;
@@ -107,18 +105,7 @@ int lfs_flashbd_prog(const struct lfs_config *cfg, lfs_block_t block,
     LFS_ASSERT(size % cfg->prog_size == 0);
     LFS_ASSERT(block < cfg->block_count);
 
-#if 0
-    // check that data was erased? only needed for testing
-    if (bd->cfg->erase_value != -1) {
-        for (lfs_off_t i = 0; i < size; i++) {
-            LFS_ASSERT(bd->buffer[block*cfg->block_size + off + i] ==
-                    bd->cfg->erase_value);
-        }
-    }
-
-    // progflash data
-    memcpy(&bd->buffer[block*cfg->block_size + off], buffer, size);
-#endif
+    platform_flash_write(buffer, bd->base_addr + block * cfg->block_size + off, size)
 
     LFS_RAMBD_TRACE("lfs_flashbd_prog -> %d", 0);
     return 0;
@@ -131,21 +118,21 @@ int lfs_flashbd_erase(const struct lfs_config *cfg, lfs_block_t block) {
     // check if erase is valid
     LFS_ASSERT(block < cfg->block_count);
 
-#if 0
-    // erase, only needed for testing
-    if (bd->cfg->erase_value != -1) {
-        memset(&bd->buffer[block*cfg->block_size],
-                bd->cfg->erase_value, cfg->block_size);
-    }
-#endif
+    uint32_t addr = bd->base_addr - bd->flash_base + block * cfg->block_size;
 
-    LFS_RAMBD_TRACE("lfs_flashbd_erase -> %d", 0);
+    u32_t sect_first = platform_flash_get_sector_of_address(addr);
+
+    u32_t sect_last =  platform_flash_get_sector_of_address(addr + cfg->block_size) - 1;
+    while( sect_first <= sect_last ) {
+        if( platform_flash_erase_sector( sect_first ++ ) == PLATFORM_ERR ) {
+           return -1;
+        }
+    }
     return 0;
 }
 
 int lfs_flashbd_sync(const struct lfs_config *cfg) {
     LFS_RAMBD_TRACE("lfs_flashbd_sync(%p)", (void*)cfg);
-    // sync does nothing because we aren't backed by anything real
     (void)cfg;
     LFS_RAMBD_TRACE("lfs_flashbd_sync -> %d", 0);
     return 0;

@@ -20,7 +20,8 @@ typedef struct lfs_flashbd_config {
 
 // flashbd state
 typedef struct lfs_flashbd {
-    uint8_t *buffer;
+    uint32_t base_addr;
+    uint32_t flash_base;
     const lfs_flashbd_config_t *cfg;
 } lfs_flashbd_t;
 
