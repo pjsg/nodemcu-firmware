@@ -7,3 +7,6 @@
 [submodule "app/libc/c99-snprintf"]
 	path = app/libc/c99-snprintf
 	url = https://github.com/weiss/c99-snprintf.git
+[submodule "app/littlefs"]
+	path = app/littlefs
+	url = https://github.com/littlefs-project/littlefs.git

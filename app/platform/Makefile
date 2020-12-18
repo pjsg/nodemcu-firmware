@@ -38,7 +38,10 @@ STD_CFLAGS=-std=gnu11 -Wimplicit
 # Required for each makefile to inherit from the parent
 #
 
-INCLUDES += -I ../spiffs -I ../u8g2lib/u8g2/src/clib -I ../ucglib/ucg/src/clib
+INCLUDES += -I ../spiffs -I ../u8g2lib/u8g2/src/clib -I ../ucglib/ucg/src/clib -I ../littlefs
 PDIR := ../$(PDIR)
+CSRCS = $(wildcard *.c)
+CSRCS += ../littlefs/lfs.c ../littlefs/lfs_util.c
 sinclude $(PDIR)Makefile
+
 
