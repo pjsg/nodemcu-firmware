@@ -6,6 +6,10 @@
 
 #define LDRV_TRAVERSAL 0
 
+#if defined(BUILD_SPIFFS) && defined(BUILD_LITTLEFS)
+#error You can only define one of BUILD_SPIFFS and BUILD_LITTLEFS
+#endif
+
 // This interferes with our clearerr member in our ops struct
 #undef clearerr
 
@@ -300,6 +304,12 @@ int32_t vfs_fsinfo( const char *name, uint32_t *total, uint32_t *used )
   }
 #endif
 
+#ifdef BUILD_LITTLEFS
+  if (fs_fns = littlefs_realm( normname, &outname, FALSE )) {
+    return fs_fns->fsinfo( total, used );
+  }
+#endif
+
 #ifdef BUILD_FATFS
   if (fs_fns = myfatfs_realm( normname, &outname, FALSE )) {
     free( outname );
@@ -397,7 +407,7 @@ int32_t vfs_chdir( const char *path )
 
 #ifdef BUILD_LITTLEFS
   if (fs_fns = littlefs_realm( normpath, &outname, TRUE )) {
-    // our LITTLEFS integration doesn't support directories (TODO)
+    // our LITTLEFS integration doesn't support chdir (TODO)
     if (strlen( outname ) == 0) {
       ok = VFS_RES_OK;
     }

@@ -30,25 +30,6 @@ int lfs_flashbd_createcfg(const struct lfs_config *cfg,
     lfs_flashbd_t *bd = cfg->context;
     bd->cfg = bdcfg;
 
-#if 0
-    // allocate buffer?
-    if (bd->cfg->buffer) {
-        bd->buffer = bd->cfg->buffer;
-    } else {
-        bd->buffer = lfs_malloc(cfg->block_size * cfg->block_count);
-        if (!bd->buffer) {
-            LFS_FLASHBD_TRACE("lfs_flashbd_createcfg -> %d", LFS_ERR_NOMEM);
-            return LFS_ERR_NOMEM;
-        }
-    }
-
-    // zero for reproducability?
-    if (bd->cfg->erase_value != -1) {
-        memset(bd->buffer, bd->cfg->erase_value,
-                cfg->block_size * cfg->block_count);
-    }
-#endif
-
     LFS_FLASHBD_TRACE("lfs_flashbd_createcfg -> %d", 0);
     return 0;
 }
@@ -72,11 +53,6 @@ int lfs_flashbd_destroy(const struct lfs_config *cfg) {
     LFS_FLASHBD_TRACE("lfs_flashbd_destroy(%p)", (void*)cfg);
     // clean up memory
     lfs_flashbd_t *bd = cfg->context;
-#if 0
-    if (!bd->cfg->buffer) {
-        lfs_free(bd->buffer);
-    }
-#endif
     LFS_FLASHBD_TRACE("lfs_flashbd_destroy -> %d", 0);
     return 0;
 }

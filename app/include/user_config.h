@@ -119,10 +119,6 @@
 //
 #define BUILD_LITTLEFS
 
-#ifndef LITTLEFS_MAX_FILESYSTEM_SIZE
-#  define LITTLEFS_MAX_FILESYSTEM_SIZE      0xFFFFFFFF
-#endif
-
 
 // The HTTPS stack requires client SSL to be enabled.  The SSL buffer size is
 // used only for espconn-layer secure connections, and is ignored otherwise.
@@ -271,6 +267,10 @@
 #  define SPIFFS_MAX_FILESYSTEM_SIZE      0xFFFFFFFF
 #endif
 //#define SPIFFS_SIZE_1M_BOUNDARY
+
+#ifndef LITTLEFS_MAX_FILESYSTEM_SIZE
+#  define LITTLEFS_MAX_FILESYSTEM_SIZE      0xFFFFFFFF
+#endif
 
 // The following define enables recording of the number of CPU cycles at certain
 // points in the startup process. It can be used to see where the time is being

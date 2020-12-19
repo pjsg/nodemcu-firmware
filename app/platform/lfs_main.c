@@ -77,6 +77,7 @@ static bool littlefs_set_cfg(struct lfs_config *cfg, bool force_create) {
   flash_cfg.phys_size = (pt_end & ~(ALIGN - 1)) - flash_cfg.phys_addr;
   cfg->block_count = flash_cfg.phys_size / INTERNAL_FLASH_SECTOR_SIZE;
   cfg->context = &flash_cfg;
+  cfg->name_max = FS_OBJ_NAME_LEN + 1;
  
   if (flash_cfg.phys_size < 6 * INTERNAL_FLASH_SECTOR_SIZE) {
     return FALSE;
@@ -267,15 +268,24 @@ static sint32_t littlefs_vfs_readdir( const struct vfs_dir *dd, struct vfs_stat 
   GET_DIR(dd);
   struct lfs_info info;
 
-  if (lfs_dir_read( &fs, dir, &info )) {
-    memset( buf, 0, sizeof( struct vfs_stat ) );
+  while (1) {
+    if (lfs_dir_read( &fs, dir, &info )) {
+      if (strcmp(info.name, ".") == 0 || strcmp(info.name, "..") == 0) {
+        continue;
+      }
+      memset( buf, 0, sizeof( struct vfs_stat ) );
 
-    // copy entries to  item
-    // fill in supported stat entries
-    strncpy( buf->name, info.name, FS_OBJ_NAME_LEN+1 );
-    buf->name[FS_OBJ_NAME_LEN] = '\0';
-    buf->size = info.size;
-    return VFS_RES_OK;
+      buf->is_dir = info.type == LFS_TYPE_DIR;
+
+      // copy entries to  item
+      // fill in supported stat entries
+      strncpy( buf->name, info.name, FS_OBJ_NAME_LEN+1 );
+      buf->name[FS_OBJ_NAME_LEN] = '\0';
+      buf->size = info.size;
+      return VFS_RES_OK;
+    } else {
+      break;
+    }
   }
 
   return VFS_RES_ERR;
@@ -473,9 +483,14 @@ static sint32_t littlefs_vfs_mkdir( const char *name ) {
 }
 
 static sint32_t littlefs_vfs_fsinfo( uint32_t *total, uint32_t *used ) {
-  *total = 10;
-  *used = 10;
-  return 0;
+  lfs_ssize_t used_blocks = lfs_fs_size(&fs);
+
+  *total = cfg.block_size * cfg.block_count;
+  *used = cfg.block_size * used_blocks;
+  if (*used > *total) {
+    *used = *total;
+  }
+  return VFS_RES_OK;
 }
 
 static sint32_t littlefs_vfs_fscfg( uint32_t *phys_addr, uint32_t *phys_size ) {
