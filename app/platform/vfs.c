@@ -86,6 +86,12 @@ vfs_vol *vfs_mount( const char *name, int num )
   }
 #endif
 
+#ifdef BUILD_LITTLEFS
+  if (fs_fns = littlefs_realm( normname, &outname, FALSE )) {
+    return fs_fns->mount( outname, num );
+  }
+#endif
+
 #ifdef BUILD_FATFS
   if (fs_fns = myfatfs_realm( normname, &outname, FALSE )) {
     vfs_vol *r = fs_fns->mount( outname, num );
@@ -105,6 +111,12 @@ int vfs_open( const char *name, const char *mode )
 
 #ifdef BUILD_SPIFFS
   if (fs_fns = myspiffs_realm( normname, &outname, FALSE )) {
+    return (int)fs_fns->open( outname, mode );
+  }
+#endif
+
+#ifdef BUILD_LITTLEFS
+  if (fs_fns = littlefs_realm( normname, &outname, FALSE )) {
     return (int)fs_fns->open( outname, mode );
   }
 #endif
@@ -132,6 +144,12 @@ vfs_dir *vfs_opendir( const char *name )
   }
 #endif
 
+#ifdef BUILD_LITTLEFS
+  if (fs_fns = littlefs_realm( normname, &outname, FALSE )) {
+    return fs_fns->opendir( outname );
+  }
+#endif
+
 #ifdef BUILD_FATFS
   if (fs_fns = myfatfs_realm( normname, &outname, FALSE )) {
     vfs_dir *r = fs_fns->opendir( outname );
@@ -155,6 +173,12 @@ int32_t vfs_stat( const char *name, struct vfs_stat *buf )
   }
 #endif
 
+#ifdef BUILD_LITTLEFS
+  if (fs_fns = littlefs_realm( normname, &outname, FALSE )) {
+    return fs_fns->stat( outname, buf );
+  }
+#endif
+
 #ifdef BUILD_FATFS
   if (fs_fns = myfatfs_realm( normname, &outname, FALSE )) {
     int32_t r = fs_fns->stat( outname, buf );
@@ -174,6 +198,12 @@ int32_t vfs_remove( const char *name )
 
 #ifdef BUILD_SPIFFS
   if (fs_fns = myspiffs_realm( normname, &outname, FALSE )) {
+    return fs_fns->remove( outname );
+  }
+#endif
+
+#ifdef BUILD_LITTLEFS
+  if (fs_fns = littlefs_realm( normname, &outname, FALSE )) {
     return fs_fns->remove( outname );
   }
 #endif
@@ -204,6 +234,14 @@ int32_t vfs_rename( const char *oldname, const char *newname )
   }
 #endif
 
+#ifdef BUILD_LITTLEFS
+  if (littlefs_realm( normoldname, &oldoutname, FALSE )) {
+    if (fs_fns = littlefs_realm( normnewname, &newoutname, FALSE )) {
+      return fs_fns->rename( oldoutname, newoutname );
+    }
+  }
+#endif
+
 #ifdef BUILD_FATFS
   if (myfatfs_realm( normoldname, &oldoutname, FALSE )) {
     if (fs_fns = myfatfs_realm( normnewname, &newoutname, FALSE )) {
@@ -227,6 +265,13 @@ int32_t vfs_mkdir( const char *name )
 
 #ifdef BUILD_SPIFFS
   // not supported
+#endif
+
+#ifdef BUILD_LITTLEFS
+  if (fs_fns = littlefs_realm( normname, &outname, FALSE )) {
+    int32_t r = fs_fns->mkdir( outname );
+    return r;
+  }
 #endif
 
 #ifdef BUILD_FATFS
@@ -276,6 +321,12 @@ int32_t vfs_fscfg( const char *name, uint32_t *phys_addr, uint32_t *phys_size)
   }
 #endif
 
+#ifdef BUILD_LITTLEFS
+  if (fs_fns = littlefs_realm( "/FLASH", &outname, FALSE )) {
+    return fs_fns->fscfg( phys_addr, phys_size );
+  }
+#endif
+
 #ifdef BUILD_FATFS
   // not supported
 #endif
@@ -291,6 +342,12 @@ int32_t vfs_format( void )
 
 #ifdef BUILD_SPIFFS
   if (fs_fns = myspiffs_realm( "/FLASH", &outname, FALSE )) {
+    return fs_fns->format();
+  }
+#endif
+
+#ifdef BUILD_LITTLEFS
+  if (fs_fns = littlefs_realm( "/FLASH", &outname, FALSE )) {
     return fs_fns->format();
   }
 #endif
@@ -338,6 +395,15 @@ int32_t vfs_chdir( const char *path )
   }
 #endif
 
+#ifdef BUILD_LITTLEFS
+  if (fs_fns = littlefs_realm( normpath, &outname, TRUE )) {
+    // our LITTLEFS integration doesn't support directories (TODO)
+    if (strlen( outname ) == 0) {
+      ok = VFS_RES_OK;
+    }
+  }
+#endif
+
 #ifdef BUILD_FATFS
   if (fs_fns = myfatfs_realm( normpath, &outname, TRUE )) {
     if (strchr( outname, ':' )) {
@@ -371,6 +437,12 @@ int32_t vfs_errno( const char *name )
   }
 #endif
 
+#ifdef BUILD_LITTLEFS
+  if (fs_fns = littlefs_realm( normname, &outname, FALSE )) {
+    return fs_fns->ferrno( );
+  }
+#endif
+
 #ifdef BUILD_FATFS
   if (fs_fns = myfatfs_realm( normname, &outname, FALSE )) {
     int32_t r = fs_fns->ferrno( );
@@ -399,6 +471,12 @@ int32_t vfs_ferrno( int fd )
     }
 #endif
 
+#ifdef BUILD_LITTLEFS
+    if (fs_fns = littlefs_realm( name, &outname, FALSE )) {
+      return fs_fns->ferrno( );
+    }
+#endif
+
 #ifdef BUILD_FATFS
     if (fs_fns = myfatfs_realm( name, &outname, FALSE )) {
       int32_t r = fs_fns->ferrno( );
@@ -421,6 +499,12 @@ void vfs_clearerr( const char *name )
 
 #ifdef BUILD_SPIFFS
   if (fs_fns = myspiffs_realm( normname, &outname, FALSE )) {
+    fs_fns->clearerr ( );
+  }
+#endif
+
+#ifdef BUILD_LITTLEFS
+  if (fs_fns = littlefs_realm( normname, &outname, FALSE )) {
     fs_fns->clearerr ( );
   }
 #endif

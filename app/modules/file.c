@@ -8,6 +8,7 @@
 
 #include <stdint.h>
 #include "vfs.h"
+#include "lfs_main.h"
 #include <string.h>
 
 #include <alloca.h>
@@ -693,6 +694,9 @@ LROT_BEGIN(file, NULL, 0)
   LROT_FUNCENTRY( writeline, file_writeline )
   LROT_FUNCENTRY( read, file_read )
   LROT_FUNCENTRY( readline, file_readline )
+#ifdef BUILD_LITTLEFS
+  LROT_FUNCENTRY( format, file_format )
+#endif
 #ifdef BUILD_SPIFFS
   LROT_FUNCENTRY( format, file_format )
   LROT_FUNCENTRY( fscfg, file_fscfg )
@@ -719,7 +723,12 @@ int luaopen_file( lua_State *L ) {
   if ((startup_option & STARTUP_OPTION_DELAY_MOUNT) == 0) {
       do_flash_mount();
   } else {
+#ifdef BUILD_SPIFFS
       myspiffs_set_automount(do_flash_mount);
+#endif
+#ifdef BUILD_LITTLEFS
+      littlefs_set_automount(do_flash_mount);
+#endif
   }
   luaL_rometatable( L, "file.vol",  LROT_TABLEREF(file_vol));
   luaL_rometatable( L, "file.obj",  LROT_TABLEREF(file_obj));

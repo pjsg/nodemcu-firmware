@@ -60,6 +60,7 @@ extern const char _irom0_text_start[], _irom0_text_end[], _flash_used_end[];
 #define NODEMCU_PARTITION_IROM0TEXT PLATFORM_PARTITION(NODEMCU_IROM0TEXT_PARTITION)
 #define NODEMCU_PARTITION_LFS       PLATFORM_PARTITION(NODEMCU_LFS0_PARTITION)
 #define NODEMCU_PARTITION_SPIFFS    PLATFORM_PARTITION(NODEMCU_SPIFFS0_PARTITION)
+#define NODEMCU_PARTITION_LITTLEFS  PLATFORM_PARTITION(NODEMCU_LITTLEFS0_PARTITION)
 
 #define RF_CAL_SIZE            0x1000
 #define PHY_DATA_SIZE          0x1000
@@ -88,7 +89,12 @@ static const struct defaultpt rompt IROM_PTABLE_ATTR USED_ATTR  = {
     { SYSTEM_PARTITION_PHY_DATA,          0x0F000,     PHY_DATA_SIZE},
     { NODEMCU_PARTITION_IROM0TEXT,        0x10000,     0x0000},
     { NODEMCU_PARTITION_LFS,              0x0,         LUA_FLASH_STORE},
+#ifdef BUILD_SPIFFS
     { NODEMCU_PARTITION_SPIFFS,           0x0,         SPIFFS_MAX_FILESYSTEM_SIZE},
+#endif
+#ifdef BUILD_LITTLEFS
+    { NODEMCU_PARTITION_LITTLEFS,         0x0,         LITTLEFS_MAX_FILESYSTEM_SIZE},
+#endif
     { SYSTEM_PARTITION_SYSTEM_PARAMETER,  0x0,         SYSTEM_PARAMETER_SIZE},
     {0,(uint32_t) &_irom0_text_end,0}
   }
@@ -250,6 +256,7 @@ static uint32_t first_time_setup(partition_item_t *pt, uint32_t n, uint32_t flas
                 p->addr = last;
             break;
 
+#ifdef BUILD_SPIFFS
          /*
           * Set up the SPIFFS partition based on some sensible defaults:
           *    size == 0 mean no SPIFFS partition.
@@ -270,6 +277,30 @@ static uint32_t first_time_setup(partition_item_t *pt, uint32_t n, uint32_t flas
             }
             /* else p->size == 0              No SPIFFS partition */
             break;
+#endif
+
+#ifdef BUILD_LITTLEFS
+         /*
+          * Set up the LITTLEFS partition based on some sensible defaults:
+          *    size == 0 mean no LITTLEFS partition.
+          *    size == ~0 means use all of the available flash for LITTLEFS (resp the addr if set).
+          *    if size > 0 then float the default boundary to 1M if the LITTLEFS will fit.
+          */
+          case NODEMCU_PARTITION_LITTLEFS:
+            if (p->size == ~0x0) {         /* Maximum LITTLEFS partition */               
+                if (p->addr == 0)
+                    p->addr = last;
+                p->size = flash_size - SYSTEM_PARAMETER_SIZE - last;
+            } else if (p->size > 0x0) {    /* Explicit LITTLEFS size */
+                if (p->addr < last)   // LITTLEFS can't overlap the previous region; 
+                    p->addr = 0; 
+                if (p->addr == 0)
+                    p->addr = (p->size <= flash_size - SYSTEM_PARAMETER_SIZE - 0x100000) ? 
+                              0x100000 : last;
+            }
+            /* else p->size == 0              No LITTLEFS partition */
+            break;
+#endif
 
           case SYSTEM_PARTITION_SYSTEM_PARAMETER:
             p->addr = flash_size - SYSTEM_PARAMETER_SIZE;

@@ -13,7 +13,8 @@
 enum vfs_filesystems {
   VFS_FS_NONE = 0,
   VFS_FS_SPIFFS,
-  VFS_FS_FATFS
+  VFS_FS_FATFS,
+  VFS_FS_LFS
 };
 
 enum vfs_seek {
@@ -115,6 +116,7 @@ typedef const struct vfs_fs_fns vfs_fs_fns;
 
 
 vfs_fs_fns *myspiffs_realm( const char *inname, char **outname, int set_current_drive );
+vfs_fs_fns *littlefs_realm( const char *inname, char **outname, int set_current_drive );
 vfs_fs_fns *myfatfs_realm( const char *inname, char **outname, int set_current_drive );
 
 int32_t vfs_get_rtc( vfs_time *tm );

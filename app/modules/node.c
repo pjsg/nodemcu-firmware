@@ -846,13 +846,15 @@ LROT_BEGIN(node_lfs, LROT_TABLEREF(node_lfs_meta), 0)
 LROT_END(node_lfs, LROT_TABLEREF(node_lfs_meta), 0)
 
 
-typedef enum pt_t { lfs_addr=0, lfs_size, spiffs_addr, spiffs_size, max_pt} pt_t;
+typedef enum pt_t { lfs_addr=0, lfs_size, spiffs_addr, spiffs_size, littlefs_addr, littlefs_size, max_pt} pt_t;
 
 LROT_BEGIN(pt_map, NULL, 0)
   LROT_NUMENTRY( lfs_addr, lfs_addr )
   LROT_NUMENTRY( lfs_size, lfs_size )
   LROT_NUMENTRY( spiffs_addr, spiffs_addr )
   LROT_NUMENTRY( spiffs_size, spiffs_size )
+  LROT_NUMENTRY( littlefs_addr, littlefs_addr )
+  LROT_NUMENTRY( littlefs_size, littlefs_size )
 LROT_END(pt_map, NULL, 0)
 
 
@@ -861,6 +863,7 @@ static int node_getpartitiontable (lua_State *L) {
   uint32_t param[max_pt] = {0};
   param[lfs_size]    = platform_flash_get_partition(NODEMCU_LFS0_PARTITION, param + lfs_addr);
   param[spiffs_size] = platform_flash_get_partition(NODEMCU_SPIFFS0_PARTITION, param + spiffs_addr);
+  param[littlefs_size] = platform_flash_get_partition(NODEMCU_LITTLEFS0_PARTITION, param + littlefs_addr);
 
   lua_settop(L, 0);
   lua_createtable (L, 0, max_pt);                   /* at index 1 */
@@ -893,6 +896,7 @@ static void delete_partition(partition_item_t *p, int n) {
 #define IROM0_PARTITION  (SYSTEM_PARTITION_CUSTOMER_BEGIN + NODEMCU_IROM0TEXT_PARTITION)
 #define LFS_PARTITION    (SYSTEM_PARTITION_CUSTOMER_BEGIN + NODEMCU_LFS0_PARTITION)
 #define SPIFFS_PARTITION (SYSTEM_PARTITION_CUSTOMER_BEGIN + NODEMCU_SPIFFS0_PARTITION)
+#define LITTLEFS_PARTITION (SYSTEM_PARTITION_CUSTOMER_BEGIN + NODEMCU_LITTLEFS0_PARTITION)
 #define SYSTEM_PARAMETER_SIZE  0x3000
 
 // Lua: node.setpartitiontable(ptvals)
@@ -965,6 +969,16 @@ static int node_setpartitiontable (lua_State *L) {
         p->size = param[spiffs_size] > 0x10000 ? param[spiffs_size] : 0x10000;
       }
 #endif
+    } else if (p->type == LITTLEFS_PARTITION) {
+      // update the LITTLEFS options if set
+      if (param[littlefs_size] != SKIP) {
+        p->size = param[littlefs_size];
+        p->addr = (param[littlefs_addr] != SKIP) ? param[littlefs_addr] :
+                    ((p->size <= flash_size - SYSTEM_PARAMETER_SIZE - 0x100000)
+                     ? 0x100000 : last);
+      } else if (param[littlefs_addr] != SKIP) {
+        p->addr = param[littlefs_addr];
+      }
     }
 
     if (p->size == 0) {

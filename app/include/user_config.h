@@ -109,13 +109,19 @@
 // can be set and this defines the default SPIFFS partition size if the NodeMCU
 // partition tool is not used. The value (~0x0) means the maximum size remaining.
 
-#define BUILD_SPIFFS
+//#define BUILD_SPIFFS
 #define SPIFFS_CACHE 1          // Enable if you use you SPIFFS in R/W mode
 //#define SPIFFS_MAX_FILESYSTEM_SIZE 0x20000
 #define SPIFFS_MAX_OPEN_FILES 4 // maximum number of open files for SPIFFS
 #define FS_OBJ_NAME_LEN 31      // maximum length of a filename
 
 //#define BUILD_FATFS
+//
+#define BUILD_LITTLEFS
+
+#ifndef LITTLEFS_MAX_FILESYSTEM_SIZE
+#  define LITTLEFS_MAX_FILESYSTEM_SIZE      0xFFFFFFFF
+#endif
 
 
 // The HTTPS stack requires client SSL to be enabled.  The SSL buffer size is
@@ -249,6 +255,8 @@
 #define NODEMCU_TLSCERT_PARTITION         5
 #define NODEMCU_SPIFFS0_PARTITION         6
 #define NODEMCU_SPIFFS1_PARTITION         7
+#define NODEMCU_LITTLEFS0_PARTITION       8
+#define NODEMCU_LITTLEFS1_PARTITION       9
 
 #ifndef LUA_FLASH_STORE
 #  define LUA_FLASH_STORE                 0x0

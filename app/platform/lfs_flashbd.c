@@ -87,7 +87,7 @@ int lfs_flashbd_read(const struct lfs_config *cfg, lfs_block_t block,
     LFS_ASSERT(size % cfg->read_size == 0);
     LFS_ASSERT(block < cfg->block_count);
 
-    platform_flash_read(buffer, bd->base_addr + block * cfg->block_size + off, size);
+    platform_flash_read(buffer, bd->phys_addr + block * cfg->block_size + off, size);
 
     LFS_RAMBD_TRACE("lfs_flashbd_read -> %d", 0);
     return 0;
@@ -105,7 +105,7 @@ int lfs_flashbd_prog(const struct lfs_config *cfg, lfs_block_t block,
     LFS_ASSERT(size % cfg->prog_size == 0);
     LFS_ASSERT(block < cfg->block_count);
 
-    platform_flash_write(buffer, bd->base_addr + block * cfg->block_size + off, size)
+    platform_flash_write(buffer, bd->phys_addr + block * cfg->block_size + off, size)
 
     LFS_RAMBD_TRACE("lfs_flashbd_prog -> %d", 0);
     return 0;
@@ -118,7 +118,7 @@ int lfs_flashbd_erase(const struct lfs_config *cfg, lfs_block_t block) {
     // check if erase is valid
     LFS_ASSERT(block < cfg->block_count);
 
-    uint32_t addr = bd->base_addr - bd->flash_base + block * cfg->block_size;
+    uint32_t addr = bd->phys_addr + block * cfg->block_size;
 
     u32_t sect_first = platform_flash_get_sector_of_address(addr);
 
