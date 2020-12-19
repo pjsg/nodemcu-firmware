@@ -330,6 +330,17 @@ static int file_exists( lua_State* L )
   return 1;
 }
 
+// Lua: mkdir(dirname)
+static int file_mkdir( lua_State* L )
+{
+  size_t len;
+  const char *fname = luaL_checklstring( L, 1, &len );
+  const char *basename = vfs_basename( fname );
+  luaL_argcheck(L, strlen(basename) <= FS_OBJ_NAME_LEN && strlen(fname) == len, 1, "filename invalid");
+  vfs_mkdir((char *)fname);
+  return 0;
+}
+
 // Lua: remove(filename)
 static int file_remove( lua_State* L )
 {
@@ -695,7 +706,9 @@ LROT_BEGIN(file, NULL, 0)
   LROT_FUNCENTRY( read, file_read )
   LROT_FUNCENTRY( readline, file_readline )
 #ifdef BUILD_LITTLEFS
+  LROT_FUNCENTRY( mkdir, file_mkdir )
   LROT_FUNCENTRY( format, file_format )
+  LROT_FUNCENTRY( fscfg, file_fscfg )
 #endif
 #ifdef BUILD_SPIFFS
   LROT_FUNCENTRY( format, file_format )

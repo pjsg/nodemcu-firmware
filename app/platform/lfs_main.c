@@ -71,9 +71,12 @@ static bool littlefs_set_cfg(struct lfs_config *cfg, bool force_create) {
   cfg->read = lfs_flashbd_read;
   cfg->prog = lfs_flashbd_prog;
   cfg->erase = lfs_flashbd_erase;
+  cfg->sync = lfs_flashbd_sync;
   cfg->block_size = INTERNAL_FLASH_SECTOR_SIZE;
   flash_cfg.phys_addr = (pt_start + ALIGN - 1) & ~(ALIGN - 1);
   flash_cfg.phys_size = (pt_end & ~(ALIGN - 1)) - flash_cfg.phys_addr;
+  cfg->block_count = flash_cfg.phys_size / INTERNAL_FLASH_SECTOR_SIZE;
+  cfg->context = &flash_cfg;
  
   if (flash_cfg.phys_size < 6 * INTERNAL_FLASH_SECTOR_SIZE) {
     return FALSE;
@@ -224,6 +227,7 @@ struct myvfs_file {
   struct vfs_file vfs_file;
   lfs_file_t lfs_file;
   struct lfs_file_config lfs_file_config;
+  char buffer[0];
 };
 
 struct myvfs_dir {
@@ -292,7 +296,6 @@ static sint32_t littlefs_vfs_close( const struct vfs_file *fd ) {
   SAVE_ERRCODE(res);
 
   // free descriptor memory
-  free(myfd->lfs_file_config.buffer);
   free( (void *)fd );
 
   return res;
@@ -398,13 +401,9 @@ static vfs_file *littlefs_vfs_open( const char *name, const char *mode ) {
   struct myvfs_file *fd;
   int flags = fs_mode2flag( mode );
 
-  if (fd = (struct myvfs_file *)malloc( sizeof( struct myvfs_file ) )) {
+  if (fd = (struct myvfs_file *)malloc( sizeof( struct myvfs_file ) + cfg.cache_size )) {
     memset(fd, 0, sizeof(*fd));
-    fd->lfs_file_config.buffer = malloc(cfg.cache_size);
-    if (!fd->lfs_file_config.buffer) {
-      free(fd);
-      return NULL;
-    }
+    fd->lfs_file_config.buffer = &fd->buffer;
     sint32_t res = lfs_file_opencfg( &fs, &fd->lfs_file, name, flags, &fd->lfs_file_config );
     if (0 <= res) {
       fd->vfs_file.fs_type = VFS_FS_LFS;
@@ -424,7 +423,7 @@ static vfs_dir *littlefs_vfs_opendir( const char *name ){
 
   if (dd = (struct myvfs_dir *)malloc( sizeof( struct myvfs_dir ) )) {
     memset(dd, 0, sizeof(*dd));
-    if (lfs_dir_open( &fs, &dd->lfs_dir, name )) {
+    if (!lfs_dir_open( &fs, &dd->lfs_dir, name )) {
       dd->vfs_dir.fs_type = VFS_FS_LFS;
       dd->vfs_dir.fns     = &littlefs_dd_fns;
       return (vfs_dir *)dd;
