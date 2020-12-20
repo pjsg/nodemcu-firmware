@@ -26,6 +26,27 @@ if file.open("/SD0/somefile.txt") then
 end
 ```
 
+## file.mkdir()
+
+Create a directory. This only applies to LITTLEFS. 
+
+#### Syntax
+`file.mkdir(dir)`
+
+#### Parameters
+`dir` directory name
+
+#### Returns
+`true` on success, `false` otherwise
+
+#### Example
+```lua
+file.mkdir("test")
+file.putcontents("test/file.txt", "some text")
+print (sjson.encode(file.list()))
+print (sjson.encode(file.list("", "test/")))
+```
+
 ## file.chdir()
 
 Change current directory (and drive). This will be used when no drive/directory is prepended to filenames.
@@ -162,13 +183,14 @@ print(file.getcontents('welcome.txt'))
 
 ## file.list()
 
-Lists all files in the file system.
+Lists all files in a directory. SPIFFS only has a single directory, whereas LITTLEFS supports multiple directories.
 
 #### Syntax
-`file.list([pattern])`
+`file.list([pattern], [path])`
 
 #### Parameters
-none
+- pattern: A regular expression to match returned files. The string "" matches everything.
+- path: This is the name of the directory to be listed. The top most directory is the default if this argument is omitted. Its name is "".
 
 #### Returns
 a Lua table which contains all {file name: file size} pairs, if no pattern
@@ -176,6 +198,8 @@ given.  If a pattern is given, only those file names matching the pattern
 (interpreted as a traditional [Lua pattern](https://www.lua.org/pil/20.2.html),
 not, say, a UNIX shell glob) will be included in the resulting table.
 `file.list` will throw any errors encountered during pattern matching.
+
+If there are any directories being listed, then their names are returned with a trailing "/" character.
 
 #### Example
 ```lua
