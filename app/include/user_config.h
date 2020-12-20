@@ -91,8 +91,10 @@
 //#define LUA_INIT_STRING "pcall(function() node.flashindex'_init'() end)"
 
 
-// NodeMCU supports two file systems: SPIFFS and FATFS, the first is available
-// on all ESP8266 modules.  The latter requires extra H/W so it is less common.
+// NodeMCU supports three file systems: SPIFFS, LITTLEFS and FATFS, the first 
+// two are available on all ESP8266 modules.  
+// The latter (FATFS) requires extra H/W so it is less common.
+
 // If you use SPIFFS then there are a number of options which impact the
 // RAM overhead and performance of the file system.
 
@@ -108,6 +110,16 @@
 // Partition Table.  However backwards compatibility SPIFFS_MAX_FILESYSTEM_SIZE
 // can be set and this defines the default SPIFFS partition size if the NodeMCU
 // partition tool is not used. The value (~0x0) means the maximum size remaining.
+
+// If you use LITTLEFS, then you can configure the maximum size of the filesystem
+// with the LITTLEFS_MAX_FILESYSTEM_SIZE define. Otherwise it uses all the remaining
+// space in the flash. This is really controlled by the partition map.
+
+// Note that it is an error to have both SPIFFS and LITTLEFS.
+
+// SPIFFS tends to be more space efficient and faster for writing, but 
+// is not really maintained. LITTLEFS is a bit slower but has an active
+// maintainer.
 
 //#define BUILD_SPIFFS
 #define SPIFFS_CACHE 1          // Enable if you use you SPIFFS in R/W mode
