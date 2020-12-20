@@ -235,13 +235,16 @@ static int file_list( lua_State* L )
 {
   vfs_dir  *dir;
   const char *pattern;
+  const char *path;
   struct vfs_stat stat;
   int pcres;
+
+  path = luaL_optstring(L, 2, "");
 
   lua_settop(L, 1);
   pattern = luaL_optstring(L, 1, NULL);   /* Pattern (arg) or nil (not) at 1 */
 
-  dir = vfs_opendir("");
+  dir = vfs_opendir(path);
   if (dir == NULL) {
     return 0;
   }

@@ -281,6 +281,9 @@ static sint32_t littlefs_vfs_readdir( const struct vfs_dir *dd, struct vfs_stat 
       // fill in supported stat entries
       strncpy( buf->name, info.name, FS_OBJ_NAME_LEN+1 );
       buf->name[FS_OBJ_NAME_LEN] = '\0';
+      if (info.type == LFS_TYPE_DIR) {
+        strlcat(buf->name, "/", FS_OBJ_NAME_LEN + 1);
+      }
       buf->size = info.size;
       return VFS_RES_OK;
     } else {
