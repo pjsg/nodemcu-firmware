@@ -317,7 +317,14 @@ static sint32_t littlefs_vfs_close( const struct vfs_file *fd ) {
 static sint32_t littlefs_vfs_read( const struct vfs_file *fd, void *ptr, size_t len ) {
   GET_FILE(fd);
 
-  sint32_t n = lfs_file_read( &fs, file, ptr, len );
+  sint32_t n;
+  if (file->flags & LFS_O_RDONLY) {
+    n = lfs_file_read( &fs, file, ptr, len );
+  } else {
+    n = LFS_ERR_INVAL;
+  }
+
+
   SAVE_ERRCODE(n);
 
   return n >= 0 ? n : VFS_RES_ERR;
@@ -326,7 +333,14 @@ static sint32_t littlefs_vfs_read( const struct vfs_file *fd, void *ptr, size_t 
 static sint32_t littlefs_vfs_write( const struct vfs_file *fd, const void *ptr, size_t len ) {
   GET_FILE(fd);
 
-  sint32_t n = lfs_file_write( &fs, file, (void *)ptr, len );
+  sint32_t n;
+
+  if (file->flags & LFS_O_WRONLY) {
+    n = lfs_file_write( &fs, file, (void *)ptr, len );
+  } else {
+    n = LFS_ERR_INVAL;
+  }
+
   SAVE_ERRCODE(n);
 
   return n >= 0 ? n : VFS_RES_ERR;
