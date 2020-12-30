@@ -284,7 +284,7 @@ static uint32_t first_time_setup(partition_item_t *pt, uint32_t n, uint32_t flas
           * Set up the LITTLEFS partition based on some sensible defaults:
           *    size == 0 mean no LITTLEFS partition.
           *    size == ~0 means use all of the available flash for LITTLEFS (resp the addr if set).
-          *    if size > 0 then float the default boundary to 1M if the LITTLEFS will fit.
+          *    if size > 0 then put the partition as high as possible.
           */
           case NODEMCU_PARTITION_LITTLEFS:
             if (p->size == ~0x0) {         /* Maximum LITTLEFS partition */               
@@ -295,8 +295,8 @@ static uint32_t first_time_setup(partition_item_t *pt, uint32_t n, uint32_t flas
                 if (p->addr < last)   // LITTLEFS can't overlap the previous region; 
                     p->addr = 0; 
                 if (p->addr == 0)
-                    p->addr = (p->size <= flash_size - SYSTEM_PARAMETER_SIZE - 0x100000) ? 
-                              0x100000 : last;
+                    p->addr = (p->size <= flash_size - SYSTEM_PARAMETER_SIZE - last) ? 
+                              flash_size - SYSTEM_PARAMETER_SIZE - p->size : last;
             }
             /* else p->size == 0              No LITTLEFS partition */
             break;
