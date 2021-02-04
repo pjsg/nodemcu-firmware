@@ -7,7 +7,7 @@ The dcc module implements decoder of the [National Model Railroad Association](h
 
 The hardware needed to decode the DCC signal can be built based on different DCC decoders implementation for Arduino, for inspiration see [https://mrrwa.org/dcc-decoder-interface/](https://mrrwa.org/dcc-decoder-interface/). Basically the signal from the DCC bus is connected via an optocoupler to any GPIO pin. The DCC bus can be also used to power the ESP.
 
-The module is based on the project NmraDcc [https://github.com/mrrwa/NmraDcc](https://github.com/mrrwa/NmraDcc) by Alex Shepherd. The module is based on the version from May 2005, commit [6d12e6cd3f5f520020d49946652a94c1e3473f6b](https://github.com/mrrwa/NmraDcc/tree/6d12e6cd3f5f520020d49946652a94c1e3473f6b).
+The module is based on the project NmraDcc [https://github.com/mrrwa/NmraDcc](https://github.com/mrrwa/NmraDcc) by Alex Shepherd. The module is based on latest commit from Oct 2020, commit [7e3b3e346991d74926e6c4f6fb46e27156b08578](https://github.com/mrrwa/NmraDcc/tree/7e3b3e346991d74926e6c4f6fb46e27156b08578).
 
 ## dcc.setup()
 

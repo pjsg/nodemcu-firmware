@@ -45,8 +45,43 @@
 //
 //------------------------------------------------------------------------
 
+// NodeMCU Lua port by @voborsky
+
+// #define NODE_DEBUG
+#define NODEMCUDCC
+
+#ifdef NODEMCUDCC
+  #include <stdint.h>
+  #include <stdlib.h>
+  #include <stdio.h>
+  #include "platform.h"
+  #include "user_interface.h"
+  #include "task/task.h"
+  #include "driver/NmraDcc.h"
+
+  #define BYTE_TO_BINARY_PATTERN "%c%c%c%c%c%c%c%c"
+  #define BYTE_TO_BINARY(byte)  \
+    (byte & 0x80 ? '1' : '0'), \
+    (byte & 0x40 ? '1' : '0'), \
+    (byte & 0x20 ? '1' : '0'), \
+    (byte & 0x10 ? '1' : '0'), \
+    (byte & 0x08 ? '1' : '0'), \
+    (byte & 0x04 ? '1' : '0'), \
+    (byte & 0x02 ? '1' : '0'), \
+    (byte & 0x01 ? '1' : '0')
+   
+   #define byte uint8_t
+   #define word int16_t
+
+   #define abs(a) ((a) > 0 ? (a) : (0-a))
+   
+   #define RISING GPIO_PIN_INTR_POSEDGE
+   #define FALLING GPIO_PIN_INTR_NEGEDGE
+   #define CHANGE GPIO_PIN_INTR_ANYEDGE
+#else
 #include "NmraDcc.h"
 #include "EEPROM.h"
+#endif
 
 // Uncomment to print DEBUG messages
 // #define DEBUG_PRINT		
@@ -113,6 +148,10 @@
 
 // Debug-Ports
 //#define debug     // Testpulse for logic analyser
+#ifdef NODE_DEBUG
+    #define debug
+    #define DB_PRINT NODE_DBG
+#endif
 #ifdef debug 
     #if defined(__AVR_ATmega1280__) || defined(__AVR_ATmega2560__)
         #define MODE_TP1 DDRF |= (1<<2) //pinA2
@@ -210,6 +249,24 @@
         
         
     //#elif defined(__AVR_ATmega128__) ||defined(__AVR_ATmega1281__)||defined(__AVR_ATmega2561__)
+    #elif defined(NODE_DEBUG)
+        #define PULLUP PLATFORM_GPIO_PULLUP
+        #define OUTPUT PLATFORM_GPIO_OUTPUT
+        #define HIGH PLATFORM_GPIO_HIGH
+        #define LOW PLATFORM_GPIO_LOW
+
+        #define MODE_TP1 platform_gpio_mode( 5, OUTPUT, PULLUP ); // GPIO 14
+        #define SET_TP1  platform_gpio_write(5, HIGH);
+        #define CLR_TP1  platform_gpio_write(5, LOW);
+        #define MODE_TP2 platform_gpio_mode( 6, OUTPUT, PULLUP ); // GPIO 12
+        #define SET_TP2  platform_gpio_write(6, HIGH);
+        #define CLR_TP2  platform_gpio_write(6, LOW);
+        #define MODE_TP3 platform_gpio_mode( 7, OUTPUT, PULLUP ); // GPIO 13
+        #define SET_TP3  platform_gpio_write(7, HIGH);
+        #define CLR_TP3  platform_gpio_write(7, LOW);
+        #define MODE_TP4 platform_gpio_mode( 8, OUTPUT, PULLUP ); // GPIO 15
+        #define SET_TP4  platform_gpio_write(8, HIGH);
+        #define CLR_TP4  platform_gpio_write(8, LOW);
     #else
         #define MODE_TP1 
         #define SET_TP1 
@@ -257,6 +314,10 @@ static ExtIntTriggerMode ISREdge;
 #elif defined ( ESP32 )
 static byte  ISREdge;   // Holder of the Next Edge we're looking for: RISING or FALLING
 static byte  ISRWatch;  // Interrupt Handler Edge Filter 
+#elif defined ( NODEMCUDCC )
+static uint8_t  ISREdge;   // Holder of the Next Edge we're looking for: RISING or FALLING
+static int16_t  bitMax, bitMin;
+DCC_MSG Msg ;
 #else
 static byte  ISREdge;   // Holder of the Next Edge we're looking for: RISING or FALLING
 static byte  ISRWatch;  // Interrupt Handler Edge Filter 
@@ -307,10 +368,15 @@ typedef struct
   uint8_t   PageRegister ;  // Used for Paged Operations in Service Mode Programming
   uint8_t   DuplicateCount ;
   DCC_MSG   LastMsg ;
+#ifdef NODEMCUDCC
+  uint8_t   IntPin;
+  uint8_t   IntBitmask;
+#else  
   uint8_t	ExtIntNum; 
   uint8_t	ExtIntPinNum;
   volatile uint8_t   *ExtIntPort;     // use port and bitmask to read input at AVR in ISR
   uint8_t   ExtIntMask;     // digitalRead is too slow on AVR
+#endif
   int16_t   myDccAddress;	// Cached value of DCC Address from CVs
   uint8_t   inAccDecDCCAddrNextReceivedMode;
   uint8_t	cv29Value; 
@@ -330,12 +396,27 @@ portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
 void IRAM_ATTR ExternalInterruptHandler(void)
 #elif defined(ESP8266)
 void ICACHE_RAM_ATTR ExternalInterruptHandler(void)
+#elif defined(NODEMCUDCC)
+task_handle_t   DataReady_taskid;
+static uint32_t ICACHE_RAM_ATTR InterruptHandler (uint32_t ret_gpio_status)
 #else
 void ExternalInterruptHandler(void)
 #endif
 {
     SET_TP3;
 
+#ifdef NODEMCUDCC
+  // This function really is running at interrupt level with everything
+  // else masked off. It should take as little time as necessary.
+  uint32 gpio_status = GPIO_REG_READ(GPIO_STATUS_ADDRESS);
+  if ((gpio_status & DccProcState.IntBitmask) == 0) { 
+    return ret_gpio_status;
+  }
+  
+  GPIO_REG_WRITE(GPIO_STATUS_W1TC_ADDRESS, gpio_status & DccProcState.IntBitmask);
+  ret_gpio_status &= ~(DccProcState.IntBitmask);
+#endif
+  
 #ifdef ESP32
 //   switch (ISRWatch)
 //   {
@@ -363,7 +444,11 @@ void ExternalInterruptHandler(void)
     uint8_t DccBitVal;
     static int8_t  bit1, bit2 ;
     static unsigned int  lastMicros = 0;
+    #ifdef NODEMCUDCC
+    static byte halfBit, preambleBitCount;
+    #else
     static byte halfBit, DCC_IrqRunning, preambleBitCount;
+    #endif
     unsigned int  actMicros, bitMicros;
     #ifdef ALLOW_NESTED_IRQ
     if ( DCC_IrqRunning ) {
@@ -377,19 +462,29 @@ void ExternalInterruptHandler(void)
         return; //>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> abort IRQ
     }
     #endif
+#ifdef NODEMCUDCC
+    actMicros = system_get_time();
+#else
     actMicros = micros();
+#endif
     bitMicros = actMicros-lastMicros;
 
         CLR_TP3; SET_TP3;
 #ifdef __AVR_MEGA__
     if ( bitMicros < bitMin || ( DccRx.State != WAIT_START_BIT && (*DccProcState.ExtIntPort & DccProcState.ExtIntMask) != (ISRLevel) ) ) {
+#elif defined(NODEMCUDCC)
+    if ( bitMicros < bitMin ) {
 #else
     if ( bitMicros < bitMin || ( DccRx.State != WAIT_START_BIT && digitalRead( DccProcState.ExtIntPinNum ) != (ISRLevel) ) ) {
 #endif
         // too short - my be false interrupt due to glitch or false protocol  or level does not match RISING / FALLING edge -> ignore this IRQ
         CLR_TP3;
         SET_TP4; /*delayMicroseconds(1); */ CLR_TP4;
+#ifdef NODEMCUDCC
+        return ret_gpio_status; //>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> abort IRQ
+#else
         return; //>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> abort IRQ
+#endif
     }
         CLR_TP3;  SET_TP3;
 
@@ -409,6 +504,8 @@ void ExternalInterruptHandler(void)
         #endif
         #ifdef ESP32
         ISRWatch = ISREdge;
+        #elif defined(NODEMCUDCC)
+        gpio_pin_intr_state_set(GPIO_ID_PIN(pin_num[DccProcState.IntPin]), ISREdge );
         #else
         attachInterrupt( DccProcState.ExtIntNum, ExternalInterruptHandler, ISREdge );
         #endif
@@ -492,6 +589,8 @@ void ExternalInterruptHandler(void)
 				#endif
                 #ifdef ESP32
 				ISRWatch = ISREdge;
+                #elif defined(NODEMCUDCC)
+                gpio_pin_intr_state_set(GPIO_ID_PIN(pin_num[DccProcState.IntPin]), ISREdge);
                 #else
                 attachInterrupt( DccProcState.ExtIntNum, ExternalInterruptHandler, ISREdge );
                 // enable level checking ( with direct port reading @ AVR )
@@ -542,13 +641,17 @@ void ExternalInterruptHandler(void)
         #endif
         #ifdef ESP32
         ISRWatch = ISREdge;
+        #elif defined(NODEMCUDCC)
+        gpio_pin_intr_state_set(GPIO_ID_PIN(pin_num[DccProcState.IntPin]), ISREdge);
         #else
         attachInterrupt( DccProcState.ExtIntNum, ExternalInterruptHandler, ISREdge );
         #endif
+        #ifndef NODEMCUDCC
         // enable level-checking
         ISRChkMask = DccProcState.ExtIntMask;
         ISRLevel = (ISREdge==RISING)? DccProcState.ExtIntMask : 0 ;
         //CLR_TP4;
+        #endif
         break;
       case 4: // previous (first) halfbit was 0
         // if this halfbit is 0 too, we got the startbit
@@ -585,14 +688,17 @@ void ExternalInterruptHandler(void)
 		#endif
         #ifdef ESP32
         ISRWatch = ISREdge;
+        #elif defined(NODEMCUDCC)
+        gpio_pin_intr_state_set(GPIO_ID_PIN(pin_num[DccProcState.IntPin]), ISREdge);
         #else
 		attachInterrupt( DccProcState.ExtIntNum, ExternalInterruptHandler, ISREdge );
         #endif
+        #ifndef NODEMCUDCC
         // enable level-checking
         ISRChkMask = DccProcState.ExtIntMask;
         ISRLevel = (ISREdge==RISING)? DccProcState.ExtIntMask : 0 ;
-
 		//CLR_TP4;
+        #endif
         break;
             
     }        
@@ -642,6 +748,9 @@ void ExternalInterruptHandler(void)
         DccRx.DataReady = 1 ;
         #ifdef ESP32
         portEXIT_CRITICAL_ISR(&mux);
+        #elif defined(NODEMCUDCC)
+        uint8_t param;
+        task_post_high(DataReady_taskid, (os_param_t) &param);
         #endif
         // SET_TP2; CLR_TP2;
         preambleBitCount = 0 ;
@@ -701,6 +810,8 @@ void ExternalInterruptHandler(void)
             #endif
             #ifdef ESP32
             ISRWatch = CHANGE;
+            #elif defined(NODEMCUDCC)
+            gpio_pin_intr_state_set(GPIO_ID_PIN(pin_num[DccProcState.IntPin]), CHANGE);
             #else
             attachInterrupt( DccProcState.ExtIntNum, ExternalInterruptHandler, CHANGE);
             #endif
@@ -726,6 +837,9 @@ void ExternalInterruptHandler(void)
   #endif
   //CLR_TP1;
   CLR_TP3;
+#ifdef NODEMCUDCC
+  return ret_gpio_status;
+#endif
 }
 
 void ackCV(void)
@@ -733,7 +847,9 @@ void ackCV(void)
   if( notifyCVAck )
   {
     DB_PRINT("ackCV: Send Basic ACK");
+#ifndef NODEMCUDCC
     notifyCVAck() ;
+#endif
   }
 }
 
@@ -747,6 +863,7 @@ void ackAdvancedCV(void)
 }
 
 
+#ifndef NODEMCUDCC
 uint8_t readEEPROM( unsigned int CV )
 {
     return EEPROM.read(CV) ;
@@ -773,6 +890,7 @@ bool readyEEPROM()
 	return true;
 #endif
 }
+#endif
 
 uint8_t validCV( uint16_t CV, uint8_t Writable )
 {
@@ -782,6 +900,9 @@ uint8_t validCV( uint16_t CV, uint8_t Writable )
   if( notifyCVValid )
     return notifyCVValid( CV, Writable ) ;
 
+#ifdef NODEMCUDCC
+  return 0;
+#else
   uint8_t Valid = 1 ;
 
   if( CV > MAXCV )
@@ -791,17 +912,24 @@ uint8_t validCV( uint16_t CV, uint8_t Writable )
     Valid = 0 ;
 
   return Valid ;
+#endif
 }
 
 uint8_t readCV( unsigned int CV )
 {
+#ifndef NODEMCUDCC
   uint8_t Value ;
+#endif
 
   if( notifyCVRead )
     return notifyCVRead( CV ) ;
 
+#ifndef NODEMCUDCC
   Value = readEEPROM(CV);
   return Value ;
+#else
+  return 0;
+#endif
 }
 
 uint8_t writeCV( unsigned int CV, uint8_t Value)
@@ -825,6 +953,9 @@ uint8_t writeCV( unsigned int CV, uint8_t Value)
   if( notifyCVWrite )
     return notifyCVWrite( CV, Value ) ;
 
+#ifdef NODEMCUDCC
+  return 0;
+#else
   if( readEEPROM( CV ) != Value )
   {
     writeEEPROM( CV, Value ) ;
@@ -837,6 +968,7 @@ uint8_t writeCV( unsigned int CV, uint8_t Value)
   }
 
   return readEEPROM( CV ) ;
+#endif
 }
 
 uint16_t getMyAddr(void)
@@ -871,6 +1003,9 @@ void processDirectCVOperation( uint8_t Cmd, uint16_t CVAddr, uint8_t Value, void
     // Perform the Write Operation
     if( Cmd & 0x08 )
     {
+#ifdef NODEMCUDCC
+      writeCV( CVAddr, Value );
+#else
       if( validCV( CVAddr, 1 ) )
       {
         DB_PRINT("CV: %d Byte Write: %02X", CVAddr, Value)
@@ -887,6 +1022,7 @@ void processDirectCVOperation( uint8_t Cmd, uint16_t CVAddr, uint8_t Value, void
         if( readCV( CVAddr ) == Value )
           ackFunction();
       }
+#endif
     }
   }
   // Perform the Bit-Wise Operation
@@ -911,11 +1047,16 @@ void processDirectCVOperation( uint8_t Cmd, uint16_t CVAddr, uint8_t Value, void
         else
           tempValue &= ~BitMask ;  // Turn the Bit Off
 
+#ifdef NODEMCUDCC
+        writeCV( CVAddr, Value );
+#else
         if( writeCV( CVAddr, tempValue ) == tempValue )
           ackFunction() ;
+#endif
       }
     }
 
+#ifndef NODEMCUDCC
     // Perform the Bit Verify Operation
     else
     {
@@ -933,6 +1074,7 @@ void processDirectCVOperation( uint8_t Cmd, uint16_t CVAddr, uint8_t Value, void
         }
       }
     }
+#endif
   }
 }
 
@@ -947,9 +1089,13 @@ void processMultiFunctionMessage( uint16_t Addr, DCC_ADDR_TYPE AddrType, uint8_t
 
   uint8_t  CmdMasked = Cmd & 0b11100000 ;
 
+  // NODE_DBG("[dcc_processMultiFunctionMessage] Addr: %d, Type: %d, Cmd: %d ("BYTE_TO_BINARY_PATTERN"), Data: %d, %d, CmdMasked="BYTE_TO_BINARY_PATTERN"\n", Addr, AddrType, Cmd, BYTE_TO_BINARY(Cmd), Data1, Data2, BYTE_TO_BINARY(CmdMasked)); 
+
   // If we are an Accessory Decoder
   if( DccProcState.Flags & FLAGS_DCC_ACCESSORY_DECODER )
   {
+    // NODE_DBG("[dcc_processMultiFunctionMessage] DccProcState.Flags & FLAGS_DCC_ACCESSORY_DECODER\n");
+    
     // and this isn't an Ops Mode Write or we are NOT faking the Multifunction Ops mode address in CV 33+34 or
     // it's not our fake address, then return
     if( ( CmdMasked != 0b11100000 ) || ( DccProcState.OpsModeAddressBaseCV == 0 ) )
@@ -966,6 +1112,7 @@ void processMultiFunctionMessage( uint16_t Addr, DCC_ADDR_TYPE AddrType, uint8_t
   else if( ( DccProcState.Flags & FLAGS_MY_ADDRESS_ONLY ) && ( Addr != getMyAddr() ) && ( Addr != 0 ) ) 
     return ;
 
+  NODE_DBG("[dcc_processMultiFunctionMessage] CmdMasked: %x\n", CmdMasked);
   switch( CmdMasked )
   {
   case 0b00000000:  // Decoder Control
@@ -1128,7 +1275,9 @@ void processServiceModeOperation( DCC_MSG * pDccMsg )
     if( RegisterAddr == 5 )
     {
       DccProcState.PageRegister = Value ;
+#ifndef NODEMCUDCC
       ackCV();
+#endif
     }
 
     else
@@ -1146,11 +1295,16 @@ void processServiceModeOperation( DCC_MSG * pDccMsg )
       {
         if( validCV( CVAddr, 1 ) )
         {
+#ifdef NODEMCUDCC
+          writeCV( CVAddr, Value );
+#else
           if( writeCV( CVAddr, Value ) == Value )
             ackCV();
+#endif
         }
       }
 
+#ifndef NODEMCUDCC
       else  // Perform the Verify Operation
       {  
         if( validCV( CVAddr, 0 ) )
@@ -1159,6 +1313,7 @@ void processServiceModeOperation( DCC_MSG * pDccMsg )
             ackCV();
         }
       }
+#endif
     }
   }
 
@@ -1183,7 +1338,11 @@ void resetServiceModeTimer(uint8_t inServiceMode)
   // Set the Service Mode
   DccProcState.inServiceMode = inServiceMode ;
   
+#ifdef NODEMCUDCC  
+  DccProcState.LastServiceModeMillis = inServiceMode ? system_get_time() : 0 ;
+#else
   DccProcState.LastServiceModeMillis = inServiceMode ? millis() : 0 ;
+#endif
   if (notifyServiceMode && inServiceMode != DccProcState.inServiceMode)
   {
     notifyServiceMode(inServiceMode);
@@ -1224,6 +1383,7 @@ void SerialPrintPacketHex(const __FlashStringHelper *strLabel, DCC_MSG * pDccMsg
 ///////////////////////////////////////////////////////////////////////////////
 void execDccProcessor( DCC_MSG * pDccMsg )
 {
+  NODE_DBG("[dcc_execDccProcessor]\n"); 
   if( ( pDccMsg->Data[0] == 0 ) && ( pDccMsg->Data[1] == 0 ) )
   {
     if( notifyDccReset )
@@ -1295,7 +1455,7 @@ void execDccProcessor( DCC_MSG * pDccMsg )
 
           BoardAddress = ( ( (~pDccMsg->Data[1]) & 0b01110000 ) << 2 ) | ( pDccMsg->Data[0] & 0b00111111 ) ;
           TurnoutPairIndex = (pDccMsg->Data[1] & 0b00000110) >> 1;
-          DB_PRINT("eDP: BAddr:%d, Index:%d", BoardAddress, TurnoutPairIndex);
+          DB_PRINT("[dcc_execDccProcessor] eDP: BAddr:%d, Index:%d", BoardAddress, TurnoutPairIndex);
           
           // First check for Legacy Accessory Decoder Configuration Variable Access Instruction
           // as it's got a different format to the others 
@@ -1305,13 +1465,13 @@ void execDccProcessor( DCC_MSG * pDccMsg )
             // Check if this command is for our address or the broadcast address
             if((BoardAddress != getMyAddr()) && ( BoardAddress < 511 )) 
             {
-              DB_PRINT("eDP: Board Address Not Matched");
+              DB_PRINT("[dcc_execDccProcessor] eDP: Board Address Not Matched");
               return;
             }
 
             uint16_t cvAddress = ((pDccMsg->Data[1] & 0b00000011) << 8) + pDccMsg->Data[2] + 1;
 		  	uint8_t  cvValue   = pDccMsg->Data[3];
-            DB_PRINT("eDP: CV:%d Value:%d", cvAddress, cvValue );
+            DB_PRINT("[dcc_execDccProcessor] eDP: CV:%d Value:%d", cvAddress, cvValue );
           	if(validCV( cvAddress, 1 ))
               writeCV(cvAddress, cvValue);
           	return;
@@ -1320,7 +1480,7 @@ void execDccProcessor( DCC_MSG * pDccMsg )
 
           OutputAddress = (((BoardAddress - 1) << 2 ) | TurnoutPairIndex) + 1 ; //decoder output addresses start with 1, packet address range starts with 0
                                                                                 // ( according to NMRA 9.2.2 )
-          DB_PRINT("eDP: OAddr:%d", OutputAddress);
+          DB_PRINT("[dcc_execDccProcessor] eDP: OAddr:%d", OutputAddress);
           
           if( DccProcState.inAccDecDCCAddrNextReceivedMode)
           {
@@ -1351,18 +1511,18 @@ void execDccProcessor( DCC_MSG * pDccMsg )
           if( DccProcState.Flags & FLAGS_MY_ADDRESS_ONLY )
           {
             if( DccProcState.Flags & FLAGS_OUTPUT_ADDRESS_MODE ) {
-              DB_PRINT(" AddrChk: OAddr:%d, BAddr:%d, myAddr:%d Chk=%d", OutputAddress, BoardAddress, getMyAddr(), OutputAddress != getMyAddr() );
+              DB_PRINT("[dcc_execDccProcessor] AddrChk: OAddr:%d, BAddr:%d, myAddr:%d Chk=%d", OutputAddress, BoardAddress, getMyAddr(), OutputAddress != getMyAddr() );
               if ( OutputAddress != getMyAddr()  &&  OutputAddress < 2045 ) {
-                DB_PRINT(" eDP: OAddr:%d, myAddr:%d - no match", OutputAddress, getMyAddr() );
+                DB_PRINT("[dcc_execDccProcessor] eDP: OAddr:%d, myAddr:%d - no match", OutputAddress, getMyAddr() );
                 return;
               }  
             } else {
               if( ( BoardAddress != getMyAddr() ) && ( BoardAddress < 511 ) ) {
-                DB_PRINT(" eDP: BAddr:%d, myAddr:%d - no match", BoardAddress, getMyAddr() );
+                DB_PRINT("[dcc_execDccProcessor] eDP: BAddr:%d, myAddr:%d - no match", BoardAddress, getMyAddr() );
                 return;
               }
             }
-	        DB_PRINT("eDP: Address Matched");
+	        DB_PRINT("[dcc_execDccProcessor] eDP: Address Matched");
           }
           
 
@@ -1491,6 +1651,7 @@ void execDccProcessor( DCC_MSG * pDccMsg )
 }
 
 ////////////////////////////////////////////////////////////////////////
+#ifndef NODEMCUDCC
 NmraDcc::NmraDcc()
 {
 }
@@ -1538,9 +1699,14 @@ void NmraDcc::initAccessoryDecoder( uint8_t ManufacturerId, uint8_t VersionId, u
 {
 	init(ManufacturerId, VersionId, Flags | FLAGS_DCC_ACCESSORY_DECODER, OpsModeAddressBaseCV);
 }
+#endif //#ifndef NODEMCUDCC
 
 ////////////////////////////////////////////////////////////////////////
+#ifdef NODEMCUDCC
+void dcc_setup(uint8_t pin, uint8_t ManufacturerId, uint8_t VersionId, uint8_t Flags, uint8_t OpsModeAddressBaseCV)
+#else
 void NmraDcc::init( uint8_t ManufacturerId, uint8_t VersionId, uint8_t Flags, uint8_t OpsModeAddressBaseCV )
+#endif
 {
   #if defined(ESP8266)
     EEPROM.begin(MAXCV);
@@ -1564,13 +1730,24 @@ void NmraDcc::init( uint8_t ManufacturerId, uint8_t VersionId, uint8_t Flags, ui
   DccProcState.inAccDecDCCAddrNextReceivedMode = 0;
 
   ISREdge = RISING;
+#ifdef NODEMCUDCC
+  DccProcState.IntPin = pin;
+  DccProcState.IntBitmask = 1 << pin_num[pin];
+#else
   // level checking to detect false IRQ's fired by glitches
   ISRLevel = DccProcState.ExtIntMask;
   ISRChkMask = DccProcState.ExtIntMask;
+#endif
 
   #ifdef ESP32
   ISRWatch = ISREdge;
   attachInterrupt( DccProcState.ExtIntNum, ExternalInterruptHandler, CHANGE);
+  #elif defined(NODEMCUDCC)
+  platform_gpio_mode(pin, PLATFORM_GPIO_INT, PLATFORM_GPIO_PULLUP);
+  NODE_DBG("[dcc_setup] platform_gpio_register_intr_hook - pin: %d, mask: %d\n", DccProcState.IntPin, DccProcState.IntBitmask);
+  platform_gpio_register_intr_hook(DccProcState.IntBitmask, InterruptHandler);  
+
+  gpio_pin_intr_state_set(GPIO_ID_PIN(pin_num[pin]), RISING);
   #else
   attachInterrupt( DccProcState.ExtIntNum, ExternalInterruptHandler, RISING);
   #endif
@@ -1593,6 +1770,7 @@ void NmraDcc::init( uint8_t ManufacturerId, uint8_t VersionId, uint8_t Flags, ui
   	notifyCVResetFactoryDefault();
 }
 
+#ifndef NODEMCUDCC
 ////////////////////////////////////////////////////////////////////////
 uint8_t NmraDcc::getCV( uint16_t CV )
 {
@@ -1662,10 +1840,16 @@ void NmraDcc::setAccDecDCCAddrNextReceived(uint8_t enable)
 {
   DccProcState.inAccDecDCCAddrNextReceivedMode = enable;
 }
+#endif //#ifndef NODEMCUDCC
 
 ////////////////////////////////////////////////////////////////////////
+#ifdef NODEMCUDCC
+static uint8_t process (os_param_t param, uint8_t prio)
+#else
 uint8_t NmraDcc::process()
+#endif
 {
+#ifndef NODEMCUDCC // !!!!!! - this will not happen as we call process task only when data is ready
   if( DccProcState.inServiceMode )
   {
     if( (millis() - DccProcState.LastServiceModeMillis ) > 20L )
@@ -1673,12 +1857,14 @@ uint8_t NmraDcc::process()
       clearDccProcState( 0 ) ;
     }
   }
+#endif
 
   if( DccRx.DataReady )
   {
     // We need to do this check with interrupts disabled
 #ifdef ESP32
     portENTER_CRITICAL(&mux);
+#elif defined(NODEMCUDCC)
 #else
     noInterrupts();
 #endif
@@ -1687,6 +1873,7 @@ uint8_t NmraDcc::process()
 
 #ifdef ESP32
     portEXIT_CRITICAL(&mux);
+#elif defined(NODEMCUDCC)
 #else
     interrupts();
 #endif
@@ -1699,9 +1886,26 @@ uint8_t NmraDcc::process()
     
 	if( notifyDccMsg ) 	notifyDccMsg( &Msg );
 		
+        NODE_DBG("[dcc_process] Size: %d\tPreambleBits: %d\t%d, %d, %d, %d, %d, %d\n", 
+          Msg.Size, Msg.PreambleBits, Msg.Data[0], Msg.Data[1], Msg.Data[2], Msg.Data[3], Msg.Data[4], Msg.Data[5]); 
      execDccProcessor( &Msg );
     return 1 ;
   }
 
   return 0 ;  
 };
+
+#ifdef NODEMCUDCC
+void dcc_close()
+{
+  NODE_DBG("[dcc_close]\n");
+  platform_gpio_mode(DccProcState.IntPin, PLATFORM_GPIO_INPUT, PLATFORM_GPIO_PULLUP);
+}
+
+void dcc_init()
+{
+  NODE_DBG("[dcc_init]\n");
+  DataReady_taskid = task_get_id((task_callback_t) process);
+}
+#endif
+

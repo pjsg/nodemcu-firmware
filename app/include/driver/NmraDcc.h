@@ -39,6 +39,13 @@
 //
 //------------------------------------------------------------------------
 
+// NodeMCU Lua port by @voborsky
+
+#define NODEMCUDCC
+// #define NODE_DEBUG
+// #define DCC_DEBUG
+// #define DCC_DBGVAR
+
 // Uncomment the following Line to Enable Service Mode CV Programming
 #define NMRA_DCC_PROCESS_SERVICEMODE
 
@@ -50,6 +57,7 @@
 
 #if defined(ARDUINO) && ARDUINO >= 100
 #include "Arduino.h"
+#elif defined(NODEMCUDCC)
 #else
 #include "WProgram.h"
 #endif
@@ -204,9 +212,14 @@ typedef struct countOf_t {
     unsigned long Err;
 }countOf_t ;
 
+#ifdef NODEMCUDCC
+countOf_t countOf;
+#else
 extern struct countOf_t countOf;
 #endif
+#endif
 
+#ifndef NODEMCUDCC
 class NmraDcc
 {
   private:
@@ -214,6 +227,7 @@ class NmraDcc
     
   public:
     NmraDcc();
+#endif
 
 // Flag values to be logically ORed together and passed into the init() method
 #define FLAGS_MY_ADDRESS_ONLY        0x01	// Only process DCC Packets with My Address
@@ -225,7 +239,7 @@ class NmraDcc
 // Flag Bits that are cloned from CV29 relating the DCC Accessory Decoder 
 #define FLAGS_CV29_BITS		(FLAGS_OUTPUT_ADDRESS_MODE | FLAGS_DCC_ACCESSORY_DECODER)
 
-
+#ifndef NODEMCUDCC
   /*+
    *  pin() is called from setup() and sets up the pin used to receive DCC packets.
    *
@@ -402,6 +416,31 @@ void pin( uint8_t ExtIntPinNum, uint8_t EnablePullup);
 #endif
 
 };
+
+#else
+    #define DCC_RESET   1
+    #define DCC_IDLE    2
+    #define DCC_SPEED   3
+    #define DCC_SPEED_RAW   4
+    #define DCC_FUNC    5
+    #define DCC_TURNOUT 6
+    #define DCC_ACCESSORY   7
+    #define DCC_RAW     8
+    #define DCC_SERVICEMODE 9
+
+    #define CV_VALID    10
+    #define CV_READ     11
+    #define CV_WRITE    12
+    #define CV_RESET    13
+
+
+    void dcc_setup(uint8_t pin, uint8_t ManufacturerId, uint8_t VersionId, uint8_t Flags, uint8_t OpsModeAddressBaseCV );
+
+
+    void dcc_close();
+
+    void dcc_init();
+#endif //#ifndef NODEMCUDCC
 
 /************************************************************************************
     Call-back functions
@@ -643,6 +682,7 @@ extern uint8_t notifyCVRead( uint16_t CV) __attribute__ ((weak));
  */
 extern uint8_t notifyCVWrite( uint16_t CV, uint8_t Value) __attribute__ ((weak));
 
+#ifndef NODEMCUDEV
 /*+
  *  notifyIsSetCVReady()  Callback to to determine if CVs can be written.
  *                        This is called when the library needs to determine
@@ -681,6 +721,7 @@ extern uint8_t notifyIsSetCVReady(void) __attribute__ ((weak));
  */
 extern void    notifyCVChange( uint16_t CV, uint8_t Value) __attribute__ ((weak));
 extern void    notifyDccCVChange( uint16_t CV, uint8_t Value) __attribute__ ((weak));
+#endif
 
 /*+
  *  notifyCVResetFactoryDefault() Called when CVs must be reset.
@@ -699,6 +740,7 @@ extern void    notifyDccCVChange( uint16_t CV, uint8_t Value) __attribute__ ((we
  */
 extern void    notifyCVResetFactoryDefault(void) __attribute__ ((weak));
 
+#ifndef NODEMCUDEV
 /*+
  *  notifyCVAck() Called when a CV write must be acknowledged.
  *                This callback must increase the current drawn by this
@@ -722,6 +764,7 @@ extern void    notifyCVAck(void) __attribute__ ((weak));
  *    None
  */
 extern void    notifyAdvancedCVAck(void) __attribute__ ((weak));
+#endif
 /*+
  *  notifyServiceMode(bool) Called when state of 'inServiceMode' changes
  *
@@ -733,13 +776,16 @@ extern void    notifyAdvancedCVAck(void) __attribute__ ((weak));
  */
 extern void    notifyServiceMode(bool) __attribute__ ((weak));
 
+#ifndef NODEMCUDEV
 // Deprecated, only for backward compatibility with version 1.4.2. 
 // Don't use in new designs. These functions may be dropped in future versions
 extern void notifyDccAccState( uint16_t Addr, uint16_t BoardAddr, uint8_t OutputAddr, uint8_t State ) __attribute__ ((weak));
 extern void notifyDccSigState( uint16_t Addr, uint8_t OutputIndex, uint8_t State) __attribute__ ((weak));
+#endif
 
 #if defined (__cplusplus)
 }
 #endif
 
 #endif
+
