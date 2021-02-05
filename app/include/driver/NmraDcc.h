@@ -432,6 +432,7 @@ void pin( uint8_t ExtIntPinNum, uint8_t EnablePullup);
     #define CV_READ     11
     #define CV_WRITE    12
     #define CV_RESET    13
+    #define CV_ACK_COMPLETE    14
 
 
     void dcc_setup(uint8_t pin, uint8_t ManufacturerId, uint8_t VersionId, uint8_t Flags, uint8_t OpsModeAddressBaseCV );
@@ -661,9 +662,9 @@ extern uint8_t notifyCVValid( uint16_t CV, uint8_t Writable ) __attribute__ ((we
  *    CV        - CV number.
  *
  *  Returns:
- *    Value     - Value of the CV.
+ *    Value     - Value of the CV. Or a value > 255 to indicate error.
  */
-extern uint8_t notifyCVRead( uint16_t CV) __attribute__ ((weak));
+extern uint16_t notifyCVRead( uint16_t CV) __attribute__ ((weak));
 
 /*+
  *  notifyCVWrite() Callback to write a value to a CV.
@@ -678,9 +679,9 @@ extern uint8_t notifyCVRead( uint16_t CV) __attribute__ ((weak));
  *    Value     - Value of the CV.
  *
  *  Returns:
- *    Value     - Value of the CV.
+ *    Value     - Value of the CV. Or a value > 255 to signal error
  */
-extern uint8_t notifyCVWrite( uint16_t CV, uint8_t Value) __attribute__ ((weak));
+extern uint16_t notifyCVWrite( uint16_t CV, uint8_t Value) __attribute__ ((weak));
 
 #ifndef NODEMCUDEV
 /*+
