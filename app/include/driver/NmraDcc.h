@@ -435,7 +435,7 @@ void pin( uint8_t ExtIntPinNum, uint8_t EnablePullup);
     #define CV_ACK_COMPLETE    14
 
 
-    void dcc_setup(uint8_t pin, uint8_t ManufacturerId, uint8_t VersionId, uint8_t Flags, uint8_t OpsModeAddressBaseCV );
+    void dcc_setup(uint8_t pin, uint8_t ManufacturerId, uint8_t VersionId, uint8_t Flags, uint8_t OpsModeAddressBaseCV, void (*AckFn)() );
 
 
     void dcc_close();

@@ -749,8 +749,7 @@ void ExternalInterruptHandler(void)
         #ifdef ESP32
         portEXIT_CRITICAL_ISR(&mux);
         #elif defined(NODEMCUDCC)
-        uint8_t param;
-        task_post_high(DataReady_taskid, (os_param_t) &param);
+        task_post_high(DataReady_taskid, (os_param_t) system_get_time());
         #endif
         // SET_TP2; CLR_TP2;
         preambleBitCount = 0 ;
@@ -847,9 +846,7 @@ void ackCV(void)
   if( notifyCVAck )
   {
     DB_PRINT("ackCV: Send Basic ACK");
-#ifndef NODEMCUDCC
     notifyCVAck() ;
-#endif
   }
 }
 
@@ -915,7 +912,7 @@ uint8_t validCV( uint16_t CV, uint8_t Writable )
 #endif
 }
 
-uint8_t readCV( unsigned int CV )
+uint16_t readCV( unsigned int CV )
 {
 #ifndef NODEMCUDCC
   uint8_t Value ;
@@ -1003,9 +1000,6 @@ void processDirectCVOperation( uint8_t Cmd, uint16_t CVAddr, uint8_t Value, void
     // Perform the Write Operation
     if( Cmd & 0x08 )
     {
-#ifdef NODEMCUDCC
-      writeCV( CVAddr, Value );
-#else
       if( validCV( CVAddr, 1 ) )
       {
         DB_PRINT("CV: %d Byte Write: %02X", CVAddr, Value)
@@ -1013,7 +1007,6 @@ void processDirectCVOperation( uint8_t Cmd, uint16_t CVAddr, uint8_t Value, void
           ackFunction();
       }
     }
-
     else  // Perform the Verify Operation
     {  
       if( validCV( CVAddr, 0 ) )
@@ -1022,7 +1015,6 @@ void processDirectCVOperation( uint8_t Cmd, uint16_t CVAddr, uint8_t Value, void
         if( readCV( CVAddr ) == Value )
           ackFunction();
       }
-#endif
     }
   }
   // Perform the Bit-Wise Operation
@@ -1032,49 +1024,45 @@ void processDirectCVOperation( uint8_t Cmd, uint16_t CVAddr, uint8_t Value, void
     uint8_t BitValue = Value & 0x08 ;
     uint8_t BitWrite = Value & 0x10 ;
 
-    uint8_t tempValue = readCV( CVAddr ) ;  // Read the Current CV Value
+    uint16_t tempValue = readCV( CVAddr ) ;  // Read the Current CV Value
 
-    DB_PRINT("CV: %d Current Value: %02X  Bit-Wise Mode: %s  Mask: %02X  Value: %02X", CVAddr, tempValue, BitWrite ? "Write":"Read", BitMask, BitValue);
+    if (tempValue <= 255) {
+      DB_PRINT("CV: %d Current Value: %02X  Bit-Wise Mode: %s  Mask: %02X  Value: %02X", CVAddr, tempValue, BitWrite ? "Write":"Read", BitMask, BitValue);
 
-    // Perform the Bit Write Operation
-    if( BitWrite )
-    {
-      if( validCV( CVAddr, 1 ) )
+      // Perform the Bit Write Operation
+      if( BitWrite )
       {
-        if( BitValue )
-          tempValue |= BitMask ;     // Turn the Bit On
+	if( validCV( CVAddr, 1 ) )
+	{
+	  if( BitValue )
+	    tempValue |= BitMask ;     // Turn the Bit On
 
-        else
-          tempValue &= ~BitMask ;  // Turn the Bit Off
+	  else
+	    tempValue &= ~BitMask ;  // Turn the Bit Off
 
-#ifdef NODEMCUDCC
-        writeCV( CVAddr, Value );
-#else
-        if( writeCV( CVAddr, tempValue ) == tempValue )
-          ackFunction() ;
-#endif
+	  if( writeCV( CVAddr, tempValue ) == tempValue )
+	    ackFunction() ;
+	}
+      }
+
+      // Perform the Bit Verify Operation
+      else
+      {
+	if( validCV( CVAddr, 0 ) )
+	{
+	  if( BitValue ) 
+	  {
+	    if( tempValue & BitMask )
+	      ackFunction() ;
+	  }
+	  else
+	  {
+	    if( !( tempValue & BitMask)  )
+	      ackFunction() ;
+	  }
+	}
       }
     }
-
-#ifndef NODEMCUDCC
-    // Perform the Bit Verify Operation
-    else
-    {
-      if( validCV( CVAddr, 0 ) )
-      {
-        if( BitValue ) 
-        {
-          if( tempValue & BitMask )
-            ackFunction() ;
-        }
-        else
-        {
-          if( !( tempValue & BitMask)  )
-            ackFunction() ;
-        }
-      }
-    }
-#endif
   }
 }
 
@@ -1275,9 +1263,7 @@ void processServiceModeOperation( DCC_MSG * pDccMsg )
     if( RegisterAddr == 5 )
     {
       DccProcState.PageRegister = Value ;
-#ifndef NODEMCUDCC
       ackCV();
-#endif
     }
 
     else
@@ -1295,16 +1281,11 @@ void processServiceModeOperation( DCC_MSG * pDccMsg )
       {
         if( validCV( CVAddr, 1 ) )
         {
-#ifdef NODEMCUDCC
-          writeCV( CVAddr, Value );
-#else
           if( writeCV( CVAddr, Value ) == Value )
             ackCV();
-#endif
         }
       }
 
-#ifndef NODEMCUDCC
       else  // Perform the Verify Operation
       {  
         if( validCV( CVAddr, 0 ) )
@@ -1313,7 +1294,6 @@ void processServiceModeOperation( DCC_MSG * pDccMsg )
             ackCV();
         }
       }
-#endif
     }
   }
 
@@ -1703,7 +1683,7 @@ void NmraDcc::initAccessoryDecoder( uint8_t ManufacturerId, uint8_t VersionId, u
 
 ////////////////////////////////////////////////////////////////////////
 #ifdef NODEMCUDCC
-void dcc_setup(uint8_t pin, uint8_t ManufacturerId, uint8_t VersionId, uint8_t Flags, uint8_t OpsModeAddressBaseCV)
+void dcc_setup(uint8_t pin, uint8_t ManufacturerId, uint8_t VersionId, uint8_t Flags, uint8_t OpsModeAddressBaseCV, void (*AckFn)())
 #else
 void NmraDcc::init( uint8_t ManufacturerId, uint8_t VersionId, uint8_t Flags, uint8_t OpsModeAddressBaseCV )
 #endif
