@@ -19,6 +19,22 @@
 
 #define TIMER_OWNER (('D' << 8) + 'C')
 
+static uint32_t last_time_overflow_millis;
+static uint32_t last_system_time;
+
+uint32_t dcc_millis() {
+  uint32_t now = system_get_time();
+
+  if (now < last_system_time) {
+    // we have an overflow situation 
+    // assume only one overflow
+    last_time_overflow_millis += (1 << 29) / 125;   // (1 << 32) / 1000
+  }
+
+  last_system_time = now;
+  return last_time_overflow_millis + now / 1000;
+}
+
 static inline void register_lua_cb(lua_State* L,int* cb_ref){
   int ref=luaL_ref(L, LUA_REGISTRYINDEX);
   if( *cb_ref != LUA_NOREF){
@@ -273,14 +289,13 @@ static void notifyCVNoArgs(int callback_type) {
   lua_rawgeti(L, LUA_REGISTRYINDEX, CV_cb);
   lua_pushinteger(L, callback_type);
   luaL_pcallx(L, 1, 0);
-  lua_call(L, 1, 0);
 }
 
 void notifyCVResetFactoryDefault(void) { 
   notifyCVNoArgs(CV_RESET);
 }
 
-static void cvAckFn(void) {
+void notifyCVAck(void) {
   // Invoked when we should generate an ack pulse (if possible)
   if (ackPin >= 0 && !ackInProgress) {
     // Duration is 6ms +/- 1ms
@@ -359,7 +374,7 @@ static int dcc_lua_setup(lua_State* L) {
   NODE_DBG("[dcc_lua_setup] Enabling interrupt on PIN %d\n", pin);
   ackPin = ackpin;
   ackInProgress = FALSE;
-  dcc_setup(pin, ManufacturerId, VersionId, Flags, OpsModeAddressBaseCV, cvAckFn );
+  dcc_setup(pin, ManufacturerId, VersionId, Flags, OpsModeAddressBaseCV );
   
   return 0;
 }

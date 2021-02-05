@@ -24,7 +24,7 @@ STD_CFLAGS=-std=gnu11 -Wimplicit -Wall
 #   makefile at its root level - these are then overridden
 #   for a subtree within the makefile rooted therein
 #
-#DEFINES +=
+DEFINES += -Dmillis=dcc_millis -include $(PDIR)/app/include/driver/dcc_compat.h
 
 #############################################################
 # Recursion Magic - Don't touch this!!

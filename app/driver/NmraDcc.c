@@ -749,7 +749,7 @@ void ExternalInterruptHandler(void)
         #ifdef ESP32
         portEXIT_CRITICAL_ISR(&mux);
         #elif defined(NODEMCUDCC)
-        task_post_high(DataReady_taskid, (os_param_t) system_get_time());
+        task_post_high(DataReady_taskid, (os_param_t) 0);
         #endif
         // SET_TP2; CLR_TP2;
         preambleBitCount = 0 ;
@@ -1318,11 +1318,7 @@ void resetServiceModeTimer(uint8_t inServiceMode)
   // Set the Service Mode
   DccProcState.inServiceMode = inServiceMode ;
   
-#ifdef NODEMCUDCC  
-  DccProcState.LastServiceModeMillis = inServiceMode ? system_get_time() : 0 ;
-#else
   DccProcState.LastServiceModeMillis = inServiceMode ? millis() : 0 ;
-#endif
   if (notifyServiceMode && inServiceMode != DccProcState.inServiceMode)
   {
     notifyServiceMode(inServiceMode);
@@ -1683,7 +1679,7 @@ void NmraDcc::initAccessoryDecoder( uint8_t ManufacturerId, uint8_t VersionId, u
 
 ////////////////////////////////////////////////////////////////////////
 #ifdef NODEMCUDCC
-void dcc_setup(uint8_t pin, uint8_t ManufacturerId, uint8_t VersionId, uint8_t Flags, uint8_t OpsModeAddressBaseCV, void (*AckFn)())
+void dcc_setup(uint8_t pin, uint8_t ManufacturerId, uint8_t VersionId, uint8_t Flags, uint8_t OpsModeAddressBaseCV)
 #else
 void NmraDcc::init( uint8_t ManufacturerId, uint8_t VersionId, uint8_t Flags, uint8_t OpsModeAddressBaseCV )
 #endif
@@ -1829,7 +1825,6 @@ static uint8_t process (os_param_t param, uint8_t prio)
 uint8_t NmraDcc::process()
 #endif
 {
-#ifndef NODEMCUDCC // !!!!!! - this will not happen as we call process task only when data is ready
   if( DccProcState.inServiceMode )
   {
     if( (millis() - DccProcState.LastServiceModeMillis ) > 20L )
@@ -1837,7 +1832,6 @@ uint8_t NmraDcc::process()
       clearDccProcState( 0 ) ;
     }
   }
-#endif
 
   if( DccRx.DataReady )
   {
@@ -1845,6 +1839,7 @@ uint8_t NmraDcc::process()
 #ifdef ESP32
     portENTER_CRITICAL(&mux);
 #elif defined(NODEMCUDCC)
+    ETS_GPIO_INTR_DISABLE();
 #else
     noInterrupts();
 #endif
@@ -1854,6 +1849,7 @@ uint8_t NmraDcc::process()
 #ifdef ESP32
     portEXIT_CRITICAL(&mux);
 #elif defined(NODEMCUDCC)
+    ETS_GPIO_INTR_ENABLE();
 #else
     interrupts();
 #endif
