@@ -318,19 +318,19 @@ static int dcc_lua_setup(lua_State* L) {
   NODE_DBG("[dcc_lua_setup]\n");
   int narg = 1;
   uint8_t pin = luaL_checkinteger(L, narg);
-  luaL_argcheck(L, platform_gpio_exists(pin) && pin>0, 1, "Invalid interrupt pin");
+  luaL_argcheck(L, platform_gpio_exists(pin) && pin>0, narg, "Invalid interrupt pin");
   narg++;
 
   int8_t ackpin = -1;
 
   if (lua_type(L, narg) == LUA_TNUMBER) {
     ackpin = luaL_checkinteger(L, narg);
-    luaL_argcheck(L, platform_gpio_exists(ackpin), 1, "Invalid ack pin");
+    luaL_argcheck(L, platform_gpio_exists(ackpin), narg, "Invalid ack pin");
     narg++;
   } 
   
   if (lua_isfunction(L, narg)) {
-    lua_pushvalue(L, narg);
+    lua_pushvalue(L, narg++);
     register_lua_cb(L, &notify_cb);
   } else {
     unregister_lua_cb(L, &notify_cb);
@@ -343,17 +343,15 @@ static int dcc_lua_setup(lua_State* L) {
 
   if (lua_istable(L, narg)) {
     // This is the raw CV table
-    lua_pushvalue(L, narg);
+    lua_pushvalue(L, narg++);
     register_lua_cb(L, &CV_ref);
-    narg++;
   } else {
     unregister_lua_cb(L, &CV_ref);
   }
 
   if (lua_isfunction(L, narg)) {
-    lua_pushvalue(L, narg);
+    lua_pushvalue(L, narg++);
     register_lua_cb(L, &CV_cb);
-    narg++;
   } else {
     unregister_lua_cb(L, &CV_cb);
   }
