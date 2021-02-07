@@ -108,6 +108,18 @@ dcc.setup(PIN,
     CV_callback)
 ```
 
+## dcc.raw()
+
+Controls whether the raw DCC packets are passed to the LUA callback. After a call to `setup` the flag is set to `false`.
+
+#### Syntax
+`dcc.raw([enabled])`
+
+#### Parameters
+- `enabled` If `enabled` is `true` then the raw DCC packets will be passed into the callback.
+
+#### Returns
+This returns the previous state of the flag.
 ## dcc.close()
 
 Stops the dcc module.

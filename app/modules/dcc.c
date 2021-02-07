@@ -21,6 +21,7 @@
 
 static uint32_t last_time_overflow_millis;
 static uint32_t last_system_time;
+static bool want_dcc_raw;
 
 uint32_t dcc_millis() {
   uint32_t now = system_get_time();
@@ -102,12 +103,14 @@ void notifyDccSpeed( uint16_t Addr, DCC_ADDR_TYPE AddrType, uint8_t Speed, DCC_D
 }
 
 void notifyDccSpeedRaw( uint16_t Addr, DCC_ADDR_TYPE AddrType, uint8_t Raw) {
-  lua_State* L = lua_getstate();
-  cbInit(L, DCC_SPEED_RAW);
-  cbAddFieldInteger(L, Addr, "Addr");
-  cbAddFieldInteger(L, AddrType, "AddrType");
-  cbAddFieldInteger(L, Raw, "Raw");
-  luaL_pcallx(L, 2, 0);
+  if (want_dcc_raw) {
+    lua_State* L = lua_getstate();
+    cbInit(L, DCC_SPEED_RAW);
+    cbAddFieldInteger(L, Addr, "Addr");
+    cbAddFieldInteger(L, AddrType, "AddrType");
+    cbAddFieldInteger(L, Raw, "Raw");
+    luaL_pcallx(L, 2, 0);
+  }
 }
 
 void notifyDccFunc( uint16_t Addr, DCC_ADDR_TYPE AddrType, FN_GROUP FuncGrp, uint8_t FuncState) {
@@ -161,16 +164,18 @@ void notifyDccSigOutputState( uint16_t Addr, uint8_t State) {
 }
 
 void notifyDccMsg( DCC_MSG * Msg ) { 
-  lua_State* L = lua_getstate();
-  cbInit(L, DCC_RAW);
-  cbAddFieldInteger(L, Msg->Size, "Size");
-  cbAddFieldInteger(L, Msg->PreambleBits, "PreambleBits");
-  char field[8];
-  for(uint8_t i = 0; i< MAX_DCC_MESSAGE_LEN; i++ ) {
-    ets_sprintf(field, "Data%d", i);
-    cbAddFieldInteger(L, Msg->Data[i], field);
+  if (want_dcc_raw) {
+    lua_State* L = lua_getstate();
+    cbInit(L, DCC_RAW);
+    cbAddFieldInteger(L, Msg->Size, "Size");
+    cbAddFieldInteger(L, Msg->PreambleBits, "PreambleBits");
+    char field[8];
+    for(uint8_t i = 0; i< MAX_DCC_MESSAGE_LEN; i++ ) {
+      ets_sprintf(field, "Data%d", i);
+      cbAddFieldInteger(L, Msg->Data[i], field);
+    }
+    luaL_pcallx(L, 2, 0);
   }
-  luaL_pcallx(L, 2, 0);
 }
 
 void notifyServiceMode(bool InServiceMode){ 
@@ -227,9 +232,8 @@ uint16_t notifyCVRead( uint16_t CV) {
 
     lua_pushcfunction(L, doDirectCVRead);
     lua_pushlightuserdata(L, &data);
-    if (lua_pcall(L, 1, 0, 0)) {
+    if (luaL_pcallx(L, 1, 0)) {
       // An error.
-      lua_pop(L, 1);
       return 256;
     }
     
@@ -242,7 +246,7 @@ uint16_t notifyCVRead( uint16_t CV) {
   lua_newtable(L);
   cbAddFieldInteger(L, CV, "CV");
   if (luaL_pcallx(L, 2, 1) != LUA_OK)
-    return 0;;
+    return 256;
   uint8 result = lua_tointeger(L, -1);
   lua_pop(L, 1);
   return result;
@@ -257,9 +261,8 @@ uint16_t notifyCVWrite( uint16_t CV, uint8_t Value) {
 
     lua_pushcfunction(L, doDirectCVWrite);
     lua_pushlightuserdata(L, &data);
-    if (lua_pcall(L, 1, 0, 0)) {
+    if (luaL_pcallx(L, 1, 0)) {
       // An error.
-      lua_pop(L, 1);
       return 256;
     }
     
@@ -272,7 +275,8 @@ uint16_t notifyCVWrite( uint16_t CV, uint8_t Value) {
   lua_newtable(L);
   cbAddFieldInteger(L, CV, "CV");
   cbAddFieldInteger(L, Value, "Value");
-  luaL_pcallx(L, 2, 1);
+  if (luaL_pcallx(L, 2, 1) != LUA_OK) 
+    return 256;
   // Return is an optional value (if integer). If nil, then it is old style
   if (!lua_isnil(L, -1)) {
     Value = lua_tointeger(L, -1);
@@ -297,10 +301,10 @@ void notifyCVResetFactoryDefault(void) {
 
 void notifyCVAck(void) {
   // Invoked when we should generate an ack pulse (if possible)
-  if (ackPin >= 0 && !ackInProgress) {
+  if (ackPin > 0 && !ackInProgress) {
     // Duration is 6ms +/- 1ms
     platform_hw_timer_arm_us(TIMER_OWNER, 6 * 1000);
-    platform_gpio_write(ackPin, 1);
+    GPIO_OUTPUT_SET(GPIO_ID_PIN(pin_num[ackPin]), 1);
     ackInProgress = TRUE;
   }
 }
@@ -308,7 +312,7 @@ void notifyCVAck(void) {
 static void ICACHE_RAM_ATTR cvAckComplete(os_param_t param) {
   // Invoked when we should end the ack pulse
   ackInProgress = FALSE;
-  platform_gpio_write(ackPin, 0);
+  GPIO_OUTPUT_SET(GPIO_ID_PIN(pin_num[ackPin]), 0);
   if (CV_ref == LUA_NOREF) {
     platform_post_high(tasknumber, CV_ACK_COMPLETE);
   }
@@ -325,7 +329,7 @@ static int dcc_lua_setup(lua_State* L) {
 
   if (lua_type(L, narg) == LUA_TNUMBER) {
     ackpin = luaL_checkinteger(L, narg);
-    luaL_argcheck(L, platform_gpio_exists(ackpin), narg, "Invalid ack pin");
+    luaL_argcheck(L, platform_gpio_exists(ackpin) && ackpin > 0, narg, "Invalid ack pin");
     narg++;
   } 
   
@@ -372,9 +376,21 @@ static int dcc_lua_setup(lua_State* L) {
   NODE_DBG("[dcc_lua_setup] Enabling interrupt on PIN %d\n", pin);
   ackPin = ackpin;
   ackInProgress = FALSE;
+  want_dcc_raw = 0;
   dcc_setup(pin, ManufacturerId, VersionId, Flags, OpsModeAddressBaseCV );
   
   return 0;
+}
+
+static int dcc_lua_raw(lua_State* L) {
+  bool old_raw = want_dcc_raw;
+
+  if (lua_isboolean(L, -1)) {
+    want_dcc_raw = lua_toboolean(L, -1);
+  }
+
+  lua_pushboolean(L, old_raw);
+  return 1;
 }
 
 static int dcc_lua_close(lua_State* L) {
@@ -403,6 +419,7 @@ int dcc_lua_init( lua_State *L ) {
 LROT_BEGIN(dcc, NULL, 0)
   LROT_FUNCENTRY( setup, dcc_lua_setup )
   LROT_FUNCENTRY( close, dcc_lua_close )
+  LROT_FUNCENTRY( raw, dcc_lua_raw )
   
   LROT_NUMENTRY( DCC_RESET, DCC_RESET )
   LROT_NUMENTRY( DCC_IDLE, DCC_IDLE )

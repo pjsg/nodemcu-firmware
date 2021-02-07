@@ -298,8 +298,14 @@
     
 #endif
 #ifdef DEBUG_PRINT
+#ifdef NODEMCUDCC
+    typedef char __FlashStringHelper;
+    #define F(x)	((const __FlashStringHelper *) (x))
+    #define DB_PRINT( x, ... ) { dbg_printf((const char*) ( x ) , ##__VA_ARGS__ ) ; dbg_printf("\n"); }
+#else
     #define DB_PRINT( x, ... ) { char dbgbuf[80]; sprintf_P( dbgbuf, (const char*) F( x ) , ##__VA_ARGS__ ) ; Serial.println( dbgbuf ); }
     #define DB_PRINT_( x, ... ) { char dbgbuf[80]; sprintf_P( dbgbuf, (const char*) F( x ) , ##__VA_ARGS__ ) ; Serial.print( dbgbuf ); }
+#endif
 #else
     #define DB_PRINT( x, ... ) ;
     #define DB_PRINT_( x, ... ) ;
@@ -462,11 +468,7 @@ void ExternalInterruptHandler(void)
         return; //>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> abort IRQ
     }
     #endif
-#ifdef NODEMCUDCC
-    actMicros = system_get_time();
-#else
     actMicros = micros();
-#endif
     bitMicros = actMicros-lastMicros;
 
         CLR_TP3; SET_TP3;
@@ -757,7 +759,9 @@ void ExternalInterruptHandler(void)
         // Wrong checksum
         CLR_TP1;
         #ifdef DCC_DBGVAR
+        #ifndef NODEMCUDCC
         DB_PRINT("Cerr");
+        #endif
         countOf.Err++;
         #endif
       }
@@ -1002,7 +1006,7 @@ void processDirectCVOperation( uint8_t Cmd, uint16_t CVAddr, uint8_t Value, void
     {
       if( validCV( CVAddr, 1 ) )
       {
-        DB_PRINT("CV: %d Byte Write: %02X", CVAddr, Value)
+        DB_PRINT("CV: %d Byte Write: %02x", CVAddr, Value);
         if( writeCV( CVAddr, Value ) == Value )
           ackFunction();
       }
@@ -1011,8 +1015,9 @@ void processDirectCVOperation( uint8_t Cmd, uint16_t CVAddr, uint8_t Value, void
     {  
       if( validCV( CVAddr, 0 ) )
       {
-        DB_PRINT("CV: %d Byte Read: %02X", CVAddr, Value)
-        if( readCV( CVAddr ) == Value )
+	uint16_t currentValue = readCV(CVAddr);
+        DB_PRINT("CV: %d Byte Verify: %02x (value is %02x)", CVAddr, Value, currentValue);
+        if( currentValue == Value )
           ackFunction();
       }
     }
@@ -1027,7 +1032,7 @@ void processDirectCVOperation( uint8_t Cmd, uint16_t CVAddr, uint8_t Value, void
     uint16_t tempValue = readCV( CVAddr ) ;  // Read the Current CV Value
 
     if (tempValue <= 255) {
-      DB_PRINT("CV: %d Current Value: %02X  Bit-Wise Mode: %s  Mask: %02X  Value: %02X", CVAddr, tempValue, BitWrite ? "Write":"Read", BitMask, BitValue);
+      DB_PRINT("CV: %d Current Value: %02x  Bit-Wise Mode: %s  Mask: %02x  Value: %02x", CVAddr, tempValue, BitWrite ? "Write":"Read", BitMask, BitValue);
 
       // Perform the Bit Write Operation
       if( BitWrite )
@@ -1044,7 +1049,6 @@ void processDirectCVOperation( uint8_t Cmd, uint16_t CVAddr, uint8_t Value, void
 	    ackFunction() ;
 	}
       }
-
       // Perform the Bit Verify Operation
       else
       {
@@ -1299,7 +1303,7 @@ void processServiceModeOperation( DCC_MSG * pDccMsg )
 
   else if( pDccMsg->Size == 4) // 4 Byte Packets are for Direct Byte & Bit Mode
   {
-    DB_PRINT("CV Direct Byte and Bit Mode Mode Operation");
+    DB_PRINT("CV Direct Byte and Bit Mode Operation");
     CVAddr = ( ( ( pDccMsg->Data[0] & 0x03 ) << 8 ) | pDccMsg->Data[1] ) + 1 ;
     Value = pDccMsg->Data[2] ;
     
@@ -1342,6 +1346,7 @@ void clearDccProcState(uint8_t inServiceMode)
 #ifdef DEBUG_PRINT
 void SerialPrintPacketHex(const __FlashStringHelper *strLabel, DCC_MSG * pDccMsg)
 {
+#ifndef NODEMCUDCC
   Serial.print( strLabel );
  
   for( uint8_t i = 0; i < pDccMsg->Size; i++ )
@@ -1353,6 +1358,7 @@ void SerialPrintPacketHex(const __FlashStringHelper *strLabel, DCC_MSG * pDccMsg
 	Serial.write( ' ' );
   }
   Serial.println();
+#endif
 }
 #endif
 
@@ -1507,7 +1513,7 @@ void execDccProcessor( DCC_MSG * pDccMsg )
 		  	// According to the NMRA Dcc Spec the Signal State should only use the lower 5 Bits,  
 		  	// however some manufacturers seem to allow/use all 8 bits, so we'll relax that constraint for now
           	uint8_t state = pDccMsg->Data[2] ;
-            DB_PRINT("eDP: OAddr:%d  Extended State:%0X", OutputAddress, state);
+            DB_PRINT("eDP: OAddr:%d  Extended State:%x", OutputAddress, state);
             if( notifyDccSigOutputState )
               notifyDccSigOutputState(OutputAddress, state);
               
@@ -1533,7 +1539,7 @@ void execDccProcessor( DCC_MSG * pDccMsg )
             }
             else
             {
-              DB_PRINT("eDP: Turnout Pair Index:%d Dir:%d Output Power: ", TurnoutPairIndex, direction, outputPower);
+              DB_PRINT("eDP: Turnout Pair Index:%d Dir:%d Output Power: %d", TurnoutPairIndex, direction, outputPower);
               if( notifyDccAccTurnoutBoard )
             	notifyDccAccTurnoutBoard( BoardAddress, TurnoutPairIndex, direction, outputPower );
             }
