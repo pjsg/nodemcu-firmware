@@ -36,7 +36,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#define CONSOLE_UART CONFIG_CONSOLE_UART_NUM
+#define CONSOLE_UART CONFIG_ESP_CONSOLE_UART_NUM
 
 typedef enum
 {
