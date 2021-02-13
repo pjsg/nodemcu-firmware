@@ -155,7 +155,7 @@ void app_main (void)
   esp_event_loop_init(bounce_events, NULL);
 
   ConsoleSetup_t cfg;
-  cfg.bit_rate  = CONFIG_CONSOLE_BIT_RATE;
+  cfg.bit_rate  = CONFIG_NODE_CONSOLE_BIT_RATE;
   cfg.data_bits = CONSOLE_NUM_BITS_8;
   cfg.parity    = CONSOLE_PARITY_NONE;
   cfg.stop_bits = CONSOLE_STOP_BITS_1;

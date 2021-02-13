@@ -13,8 +13,8 @@ ifneq (4.0, $(firstword $(sort $(MAKE_VERSION) 4.0)))
 endif
 
 MODULE_NAMES:=$(call uppercase,$(patsubst $(COMPONENT_PATH)/%.c,%,$(wildcard $(COMPONENT_PATH)/*.c)))
-FORCE_LINK:=$(foreach mod,$(MODULE_NAMES),$(if $(CONFIG_NODEMCU_CMODULE_$(mod)), -u $(mod)_module_selected1))
-COMPONENT_ADD_LDFLAGS=$(FORCE_LINK) -lmodules $(if $(CONFIG_NODEMCU_CMODULE_BTHCI),-lbtdm_app)
+FORCE_LINK:=$(foreach mod,$(MODULE_NAMES),$(if $(NODEMCU_CMODULE_$(mod)), -u $(mod)_module_selected1))
+COMPONENT_ADD_LDFLAGS=$(FORCE_LINK) -lmodules $(if $(NODEMCU_CMODULE_BTHCI),-lbtdm_app)
 
 # These are disabled by default in the IDF, so switch them back on
 CFLAGS += \
