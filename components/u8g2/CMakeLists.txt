@@ -1,0 +1,7 @@
+#if(CONFIG_NODE_U8G2_ENABLED)
+  idf_component_register(SRC_DIRS u8g2/src/clib INCLUDE_DIRS u8g2/src/clib)
+#else()
+#  idf_component_register(INCLUDE_DIRS u8g2/src u8g2/src/clib)
+#endif()
+target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-unused-const-variable)
+target_compile_definitions(${COMPONENT_LIB} PUBLIC -DU8X8_USE_PINS -DU8X8_WITH_USER_PTR -D__ESP32__ -Du32_t=uint32_t -Du16_t=uint16_t -Du8_t=uint8_t -Ds32_t=int32_t -Ds16_t=int16_t -Duint32=uint32_t -Duint16=uint16_t -Duint8=uint8_t -Dsint32=int32_t -Dsint16=int16_t -Dsint8=int8_t)

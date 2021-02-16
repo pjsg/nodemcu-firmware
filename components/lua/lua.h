@@ -96,8 +96,10 @@ typedef void * (*lua_Alloc) (void *ud, void *ptr, size_t osize, size_t nsize);
 #include LUA_USER_H
 #endif
 
-#if defined(LUA_OPTIMIZE_DEBUG) && LUA_OPTIMIZE_DEBUG == 0
+#if defined(CONFIG_LUA_OPTIMIZE_DEBUG) && CONFIG_LUA_OPTIMIZE_DEBUG == 0
 #undef LUA_OPTIMIZE_DEBUG
+#else
+#define LUA_OPTIMIZE_DEBUG 1
 #endif
 
 /* type of numbers in Lua */

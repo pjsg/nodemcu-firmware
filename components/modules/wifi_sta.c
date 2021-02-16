@@ -210,7 +210,7 @@ static int wifi_sta_setip(lua_State *L)
 
   ESP_ERROR_CHECK(tcpip_adapter_dhcpc_stop(TCPIP_ADAPTER_IF_STA));
   tcpip_adapter_set_ip_info(TCPIP_ADAPTER_IF_STA, &ipInfo);
-  tcpip_adapter_set_dns_info(TCPIP_ADAPTER_IF_STA, TCPIP_ADAPTER_DNS_MAIN, &dnsinfo);
+  tcpip_adapter_set_dns_info(TCPIP_ADAPTER_IF_STA, ESP_NETIF_DNS_MAIN, &dnsinfo);
 
   return 0;
 }
@@ -283,9 +283,12 @@ static int wifi_sta_config (lua_State *L)
   bool auto_conn = luaL_optbool (L, -1, true);
 
   SET_SAVE_MODE(save);
+  esp_err_t err;
+/*
   esp_err_t err = esp_wifi_set_auto_connect (auto_conn);
   if (err != ESP_OK)
     return luaL_error (L, "failed to set wifi auto-connect, code %d", err);
+*/
 
   err = esp_wifi_set_config (WIFI_IF_STA, &cfg);
   if (err != ESP_OK)
@@ -336,10 +339,12 @@ static int wifi_sta_getconfig (lua_State *L)
     lua_setfield (L, -2, "bssid");
   }
 
-  bool auto_conn;
+  bool auto_conn = 1;
+/*
   err = esp_wifi_get_auto_connect (&auto_conn);
   if (err != ESP_OK)
     return luaL_error (L, "failed to get auto-connect, code %d", err);
+*/
 
   lua_pushboolean (L, auto_conn);
   lua_setfield (L, -2, "auto");

@@ -15,6 +15,7 @@
 #include "esp_vfs.h"
 #include "lnodeaux.h"
 #include "lflash.h"
+#include "ldebug.h"
 
 // Lua: node.chipid()
 static int node_chipid( lua_State *L )
@@ -490,7 +491,7 @@ static int node_compile( lua_State* L )
   size_t len;
   const char *fname = luaL_checklstring( L, 1, &len );
   const char *basename = vfs_basename( fname );
-  luaL_argcheck(L, strlen(basename) <= CONFIG_FS_OBJ_NAME_LEN && strlen(fname) == len, 1, "filename invalid");
+  luaL_argcheck(L, strlen(basename) <= CONFIG_NODE_FS_OBJ_NAME_LEN && strlen(fname) == len, 1, "filename invalid");
 
   char *output = luaM_malloc( L, len+1 );
   strcpy(output, fname);

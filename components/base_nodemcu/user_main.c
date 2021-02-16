@@ -71,11 +71,13 @@ static void handle_esp_event (task_param_t param, task_prio_t prio)
   while (xQueueReceive (esp_event_queue, &evt, 0) == pdPASS)
   {
     nodemcu_esp_event_reg_t *evregs;
+/*
     for (evregs = &esp_event_cb_table; evregs->callback; ++evregs)
     {
       if (evregs->event_id == evt.event_id)
         evregs->callback (&evt);
     }
+*/
   }
 }
 
