@@ -1,17 +1,15 @@
 
     /* ----- Begin NodeMCU link-time arrays ------- */
-SECTIONS {
-.flash.rodata1 : 
-{
 
     /* Don't change the alignment here without also updating the _Static_assert
      * over in linit.c! */
     . = ALIGN(8);
     /* Link-time arrays containing the defs for the included modules */
     lua_libs_map = ABSOLUTE(.);
-    KEEP(*(.lua_libs)); 
+
+    KEEP(*(.lua_libs)) 
     /* Null-terminate the array, 24 bytes */
-    LONG(0) LONG(0) LONG(0) LONG(0) LONG(0) LONG(0)
+    LONG(0) LONG(0) LONG(0) LONG(0) LONG(0) LONG(0) 
 
     /* Don't change the alignment here without also updating the _Static_assert
      * over in linit.c! */
@@ -29,5 +27,3 @@ SECTIONS {
     LONG(0) LONG(0) /* Null-terminate the array, 8 bytes */
 
     /* ----- End NodeMCU link-time arrays ------- */
-}
-}

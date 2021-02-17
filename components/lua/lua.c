@@ -338,7 +338,7 @@ int lua_main (int argc, char **argv) {
 
   dojob(&gLoad);
 
-  NODE_DBG("Heap size:%d.\n",system_get_free_heap_size());
+  NODE_DBG("Heap size:%d.\n",esp_get_free_heap_size());
   legc_set_mode( L, EGC_ALWAYS, 4096 );
   // legc_set_mode( L, EGC_ON_MEM_LIMIT, 4096 );
   // lua_close(L);
