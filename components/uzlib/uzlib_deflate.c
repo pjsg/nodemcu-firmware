@@ -117,7 +117,9 @@ jmp_buf unwindAddr;
 
 typedef uint8_t  uchar;
 typedef uint16_t ushort;
+#if !defined(CONFIG_IDF_TARGET_ESP32C3)
 typedef uint32_t uint;
+#endif
 
 #ifdef DEBUG_COUNTS
 #define DBG_PRINT(...) printf(__VA_ARGS__)
@@ -525,7 +527,7 @@ void uzlibCompressBlock(const uchar *src, uint srcLen) {
  * This compress wrapper treats the input stream as a single block for
  * compression using the default Static huffman block encoding
  */
-int uzlib_compress (uchar **dest, uint *destLen, const uchar *src, uint srcLen) {
+int uzlib_compress (uchar **dest, uint32_t *destLen, const uchar *src, uint32_t srcLen) {
   uint crc = ~uzlib_crc32(src, srcLen, ~0);
   uint chainLen = srcLen < MAX_OFFSET ? srcLen : MAX_OFFSET;
   uint hashSlots, i, j;

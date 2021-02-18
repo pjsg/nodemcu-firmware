@@ -63,7 +63,9 @@ int dbg_break(void) {return 1;}
 
 typedef uint8_t  uchar;
 typedef uint16_t ushort;
+#if !defined(CONFIG_IDF_TARGET_ESP32C3)
 typedef uint32_t uint;
+#endif
 
 /* data structures */
 
@@ -545,10 +547,10 @@ static int uncompress_stream (UZLIB_DATA *d) {
  */
 
 int uzlib_inflate (
-     uchar (*get_byte)(void),
+     uint8_t (*get_byte)(void),
      void (*put_byte)(uchar v),
-     uchar (*recall_byte)(uint offset),
-     uint len, uint *crc, void **state) {
+     uint8_t (*recall_byte)(uint32_t offset),
+     uint32_t len, uint32_t *crc, void **state) {
   int res;
 
   /* initialize decompression structure */

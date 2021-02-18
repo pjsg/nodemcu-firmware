@@ -24,8 +24,13 @@ static int node_chipid( lua_State *L )
   // esptool commit e9e9179f6fc3f2ecfc568987d3224b5e53a05f06
   // Oddly, this drops the lowest byte what's effectively the MAC address, so
   // it would seem plausible to encounter up to 256 chips with the same chipid
+#if defined(CONFIG_IDF_TARGET_ESP32C3) 
+  uint64_t word16 = 0;
+  uint64_t word17 = 0;
+#else
   uint64_t word16 = REG_READ(EFUSE_BLK0_RDATA1_REG);
   uint64_t word17 = REG_READ(EFUSE_BLK0_RDATA2_REG);
+#endif
   const uint64_t MAX_UINT24 = 0xffffff;
   uint64_t cid = ((word17 & MAX_UINT24) << 24) | ((word16 >> 8) & MAX_UINT24);
   char chipid[17] = { 0 };
@@ -131,6 +136,7 @@ static int node_sleep (lua_State *L)
     esp_sleep_enable_timer_wakeup(usecs);
   }
 
+#if !defined(CONFIG_IDF_TARGET_ESP32C3)
   // touch option: boolean
   if (opt_checkbool(L, "touch", false)) {
     int err = esp_sleep_enable_touchpad_wakeup();
@@ -138,7 +144,9 @@ static int node_sleep (lua_State *L)
       return luaL_error(L, "Error %d returned from esp_sleep_enable_touchpad_wakeup()", err);
     }
   }
+#endif
 
+#if !defined(CONFIG_IDF_TARGET_ESP32C3)
   // ulp option: boolean
   if (opt_checkbool(L, "ulp", false)) {
     int err = esp_sleep_enable_ulp_wakeup();
@@ -146,6 +154,7 @@ static int node_sleep (lua_State *L)
       return luaL_error(L, "Error %d returned from esp_sleep_enable_ulp_wakeup()", err);
     }
   }
+#endif
 
   int err = esp_light_sleep_start();
   if (err == ESP_ERR_INVALID_STATE) {
@@ -228,6 +237,7 @@ static int node_dsleep (lua_State *L)
         esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
     }
 
+#if !defined(CONFIG_IDF_TARGET_ESP32C3)
     if (pin_mask) {
       esp_sleep_ext1_wakeup_mode_t mode = (level == 1) ?
         ESP_EXT1_WAKEUP_ANY_HIGH : ESP_EXT1_WAKEUP_ALL_LOW;
@@ -240,7 +250,7 @@ static int node_dsleep (lua_State *L)
     if (touch) {
       esp_sleep_enable_touchpad_wakeup();
     }
-
+#endif
   } else {
     luaL_argerror(L, 1, "Expected integer or table");
   }

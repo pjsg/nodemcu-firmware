@@ -32,11 +32,10 @@
  */
 
 #include "driver/console.h"
-#include "esp_intr.h"
 #include "esp_intr_alloc.h"
-#include "soc/soc.h"
+#include "soc/periph_defs.h"
 #include "soc/uart_reg.h"
-#include "soc/dport_reg.h"
+//#include "soc/dport_reg.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 
@@ -49,7 +48,7 @@
 // These used to be available in soc/uart_register.h:
 #define UART_GET_RXFIFO_RD_BYTE(i)  GET_PERI_REG_BITS2(UART_FIFO_REG(i) , UART_RXFIFO_RD_BYTE_V, UART_RXFIFO_RD_BYTE_S)
 #define UART_GET_RXFIFO_CNT(i)  GET_PERI_REG_BITS2(UART_STATUS_REG(i) , UART_RXFIFO_CNT_V, UART_RXFIFO_CNT_S)
-#define UART_SET_AUTOBAUD_EN(i,val)  SET_PERI_REG_BITS(UART_AUTOBAUD_REG(i) ,UART_AUTOBAUD_EN_V,(val),UART_AUTOBAUD_EN_S)
+//#define UART_SET_AUTOBAUD_EN(i,val)  SET_PERI_REG_BITS(UART_AUTOBAUD_REG(i) ,UART_AUTOBAUD_EN_V,(val),UART_AUTOBAUD_EN_S)
 # define UART_SET_PARITY_EN(i,val)  SET_PERI_REG_BITS(UART_CONF0_REG(i) ,UART_PARITY_EN_V,(val),UART_PARITY_EN_S)
 #define UART_SET_RX_TOUT_EN(i,val)  SET_PERI_REG_BITS(UART_CONF1_REG(i) ,UART_RX_TOUT_EN_V,(val),UART_RX_TOUT_EN_S)
 #define UART_SET_RX_TOUT_THRHD(i,val)  SET_PERI_REG_BITS(UART_CONF1_REG(i) ,UART_RX_TOUT_THRHD_V,(val),UART_RX_TOUT_THRHD_S)
@@ -147,7 +146,7 @@ void console_setup (const ConsoleSetup_t *cfg)
   UART_SET_STOP_BIT_NUM(CONSOLE_UART, cfg->stop_bits);
 
   // TODO: Make this actually work
-  UART_SET_AUTOBAUD_EN(CONSOLE_UART, cfg->auto_baud);
+  //UART_SET_AUTOBAUD_EN(CONSOLE_UART, cfg->auto_baud);
 }
 
 
@@ -175,10 +174,12 @@ void console_init (const ConsoleSetup_t *cfg, task_handle_t tsk)
   esp_intr_enable (intr_handle);
 
   // Register our console_read_r_xxx functions to support stdin input
+  _read_r_app = syscall_table_ptr->_read_r;
+  syscall_table_ptr->_read_r = console_read_r_app;
+#if !defined(CONFIG_IDF_TARGET_ESP32C3)
   _read_r_pro = syscall_table_ptr_pro->_read_r;
-  _read_r_app = syscall_table_ptr_app->_read_r;
   syscall_table_ptr_pro->_read_r = console_read_r_pro;
-  syscall_table_ptr_app->_read_r = console_read_r_app;
+#endif
 }
 
 
