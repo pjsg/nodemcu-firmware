@@ -71,13 +71,11 @@ static void handle_esp_event (task_param_t param, task_prio_t prio)
   while (xQueueReceive (esp_event_queue, &evt, 0) == pdPASS)
   {
     nodemcu_esp_event_reg_t *evregs;
-/*
     for (evregs = &esp_event_cb_table; evregs->callback; ++evregs)
     {
       if (evregs->event_id == evt.event_id)
         evregs->callback (&evt);
     }
-*/
   }
 }
 
@@ -128,7 +126,7 @@ void nodemcu_init(void)
         return;
     }
 
-#if defined ( CONFIG_BUILD_SPIFFS )
+#if defined ( CONFIG_NODE_BUILD_SPIFFS )
     // This can take a while, so be nice and provide some feedback while waiting
     printf ("Mounting flash filesystem...\n");
     if (!vfs_mount("/FLASH", 0)) {

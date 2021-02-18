@@ -147,7 +147,7 @@ static int file_obj_free( lua_State *L )
   return 0;
 }
 
-#ifdef CONFIG_BUILD_SPIFFS
+#ifdef CONFIG_NODE_BUILD_SPIFFS
 // Lua: format()
 static int file_format( lua_State* L )
 {
@@ -539,7 +539,7 @@ typedef struct {
   vfs_vol *vol;
 } volume_type;
 
-#ifdef CONFIG_BUILD_FATFS
+#ifdef CONFIG_NODE_BUILD_FATFS
 // Lua: success = file.chdir("/SD0/")
 static int file_chdir( lua_State *L )
 {
@@ -571,7 +571,7 @@ LROT_BEGIN(file)
   LROT_FUNCENTRY( writeline, file_writeline )
   LROT_FUNCENTRY( read,      file_read )
   LROT_FUNCENTRY( readline,  file_readline )
-#ifdef CONFIG_BUILD_SPIFFS
+#ifdef CONFIG_NODE_BUILD_SPIFFS
   LROT_FUNCENTRY( format,    file_format )
   LROT_FUNCENTRY( fscfg,     file_fscfg )
 #endif
@@ -583,7 +583,7 @@ LROT_BEGIN(file)
   LROT_FUNCENTRY( fsinfo,    file_fsinfo )
   LROT_FUNCENTRY( on,        file_on )
   LROT_FUNCENTRY( stat,      file_stat )
-#ifdef CONFIG_BUILD_FATFS
+#ifdef CONFIG_NODE_BUILD_FATFS
   LROT_FUNCENTRY( chdir,     file_chdir )
 #endif
 LROT_END(file, NULL, 0)

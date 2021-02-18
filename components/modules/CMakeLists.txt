@@ -1,2 +1,5 @@
 idf_component_register(SRC_DIRS . PRIV_REQUIRES esp_http_client base_nodemcu platform lua task driver_can mbedtls mqtt app_update sjson qrcodegen sdmmc libsodium soc ucg u8g2)
 target_compile_definitions(${COMPONENT_LIB} PUBLIC -D__ESP32__ -Du32_t=uint32_t -Du16_t=uint16_t -Du8_t=uint8_t -Ds32_t=int32_t -Ds16_t=int16_t -Duint32=uint32_t -Duint16=uint16_t -Duint8=uint8_t -Dsint32=int32_t -Dsint16=int16_t -Dsint8=int8_t)
+execute_process(COMMAND tools/gen_modules.pl sdkconfig WORKING_DIRECTORY .. OUTPUT_VARIABLE undefineds ERROR_VARIABLE error RESULT_VARIABLE result)
+message(STATUS " Result of command is ${undefineds}")
+target_link_libraries(${COMPONENT_LIB} INTERFACE ${undefineds})
