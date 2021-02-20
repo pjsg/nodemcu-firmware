@@ -14,8 +14,10 @@ extern char _irom0_text_end;
 
 #elif defined(__ESP32__)
 
-#define RODATA_START_ADDRESS        ((char*)0x3F400000)
-#define RODATA_END_ADDRESS          ((char*)0x3F800000)
+extern char _rodata_start;
+extern char _rodata_end;
+#define RODATA_START_ADDRESS        (&_rodata_start)
+#define RODATA_END_ADDRESS          (&_rodata_end)
 
 #else                       // other compilers
 

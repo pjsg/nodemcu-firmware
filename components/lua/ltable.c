@@ -26,6 +26,8 @@
 #include <math.h>
 #include <string.h>
 
+#include <stdio.h>
+
 #include "ldebug.h"
 #include "ldo.h"
 #include "lgc.h"

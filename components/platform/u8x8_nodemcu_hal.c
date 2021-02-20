@@ -1,7 +1,11 @@
 
 #include <string.h>
 
-#include "rom/ets_sys.h"
+#ifdef CONFIG_IDF_TARGET_ESP32C3
+#include "esp32c3/rom/ets_sys.h"
+#else
+#include "esp32/rom/ets_sys.h"
+#endif
 
 #include "driver/gpio.h"
 #include "driver/i2c.h"

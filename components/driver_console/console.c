@@ -32,6 +32,7 @@
  */
 
 #include "driver/console.h"
+#include "driver/uart.h"
 #include "esp_intr_alloc.h"
 #include "soc/periph_defs.h"
 #include "soc/uart_reg.h"
@@ -40,7 +41,7 @@
 #include "freertos/queue.h"
 
 #include <unistd.h>
-#include "rom/libc_stubs.h"
+#include "esp32c3/rom/libc_stubs.h"
 #include "sys/reent.h"
 
 #define UART_INPUT_QUEUE_SZ 0x100
@@ -59,13 +60,17 @@
 #define UART_SET_PARITY(i,val)  SET_PERI_REG_BITS(UART_CONF0_REG(i) ,UART_PARITY_V,(val),UART_PARITY_S)
 
 
+#define BUF_SIZE 256
+
+
 typedef int (*_read_r_fn) (struct _reent *r, int fd, void *buf, int size);
 
 static _read_r_fn _read_r_pro, _read_r_app;
 
-static xQueueHandle uart0Q;
 static task_handle_t input_task = 0;
 static intr_handle_t intr_handle;
+
+static QueueHandle_t uart0_queue;
 
 // --- Syscall support for reading from STDIN_FILENO ---------------
 
@@ -102,6 +107,7 @@ static int console_read_r_app (struct _reent *r, int fd, void *buf, int size)
 
 // --- End syscall support -------------------------------------------
 
+#if 0
 static void uart0_rx_intr_handler (void *arg)
 {
   (void)arg;
@@ -134,12 +140,35 @@ static void uart0_rx_intr_handler (void *arg)
     task_post_low (input_task, false);
 }
 
+#endif
+
+static void uart_event_task(void *pvParameters)
+{
+  uart_event_t event;
+  for(;;) {
+    //Waiting for UART event.
+    if(xQueueReceive(uart0_queue, (void * )&event, (portTickType)portMAX_DELAY)) {
+      switch(event.type) {
+	//Event of UART receving data
+	/*We'd better handler data event fast, there would be much more data events than
+	other types of events. If we take too much time on data event, the queue might
+	be full.*/
+	case UART_DATA:
+	  task_post_low (input_task, false);
+	  break;
+	default:
+	  break;
+      }
+    }
+  }
+}
 
 void console_setup (const ConsoleSetup_t *cfg)
 {
-  uart_tx_wait_idle (CONSOLE_UART);
+  esp_rom_uart_tx_wait_idle (CONSOLE_UART);
 
-  uart_div_modify (CONSOLE_UART, (UART_CLK_FREQ << 4) / cfg->bit_rate);
+/*
+  esp_rom_uart_set_clock_baudrate(CONSOLE_UART, UART_CLK_FREQ, cfg->bit_rate);
   UART_SET_BIT_NUM(CONSOLE_UART, cfg->data_bits);
   UART_SET_PARITY_EN(CONSOLE_UART, cfg->parity != CONSOLE_PARITY_NONE);
   UART_SET_PARITY(CONSOLE_UART, cfg->parity & 0x1);
@@ -147,31 +176,29 @@ void console_setup (const ConsoleSetup_t *cfg)
 
   // TODO: Make this actually work
   //UART_SET_AUTOBAUD_EN(CONSOLE_UART, cfg->auto_baud);
-}
+*/
+    uart_driver_install(CONSOLE_UART, BUF_SIZE * 2, BUF_SIZE * 2, 20, &uart0_queue, 0);
+    //uart_param_config(EX_UART_NUM, &uart_config);
 
+    //Set UART log level
+    //esp_log_level_set(TAG, ESP_LOG_INFO);
+    //Set UART pins (using UART0 default pins ie no changes.)
+    //uart_set_pin(EX_UART_NUM, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+
+    //Set uart pattern detect function.
+    //uart_enable_pattern_det_baud_intr(EX_UART_NUM, '+', PATTERN_CHR_NUM, 9, 0, 0);
+    //Reset the pattern queue length to record at most 20 pattern positions.
+    //uart_pattern_queue_reset(EX_UART_NUM, 20);
+
+    //Create a task to handler UART event from ISR
+    xTaskCreate(uart_event_task, "uart_event_task", 2048, NULL, 12, NULL);
+}
 
 
 void console_init (const ConsoleSetup_t *cfg, task_handle_t tsk)
 {
   input_task = tsk;
-  uart0Q = xQueueCreate (UART_INPUT_QUEUE_SZ, sizeof (char));
-
   console_setup (cfg);
-
-  esp_intr_alloc (ETS_UART0_INTR_SOURCE + CONSOLE_UART,
-      ESP_INTR_FLAG_LOWMED | ESP_INTR_FLAG_INTRDISABLED,
-      uart0_rx_intr_handler, NULL, &intr_handle);
-
-  UART_SET_RX_TOUT_EN(CONSOLE_UART, true);
-  UART_SET_RX_TOUT_THRHD(CONSOLE_UART, 2);
-  UART_SET_RXFIFO_FULL_THRHD(CONSOLE_UART, 10);
-
-  WRITE_PERI_REG(UART_INT_ENA_REG(CONSOLE_UART),
-      UART_RXFIFO_TOUT_INT_ENA |
-      UART_RXFIFO_FULL_INT_ENA |
-      UART_FRM_ERR_INT_ENA);
-
-  esp_intr_enable (intr_handle);
 
   // Register our console_read_r_xxx functions to support stdin input
   _read_r_app = syscall_table_ptr->_read_r;
@@ -185,6 +212,14 @@ void console_init (const ConsoleSetup_t *cfg, task_handle_t tsk)
 
 bool console_getc (char *c)
 {
-  return (uart0Q && (xQueueReceive (uart0Q, c, 0) == pdTRUE));
+  size_t data_len;
+  int uart_num = CONSOLE_UART;
+  if (uart_get_buffered_data_len(uart_num, &data_len) == ESP_OK && data_len > 0) {
+    int ret = uart_read_bytes(uart_num, c, 1, 0);
+    if (ret == 1) {
+      return true;
+    }
+  }
+  return false;
 }
 

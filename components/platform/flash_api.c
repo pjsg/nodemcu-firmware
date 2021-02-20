@@ -7,7 +7,11 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include "rom/spi_flash.h"
+#ifdef CONFIG_IDF_TARGET_ESP32C3
+//#include "esp32c3/rom/spi_flash.h"
+#else
+//#include "esp32/rom/spi_flash.h"
+#endif
 
 #include "platform_wdt.h"
 
@@ -29,6 +33,7 @@ static inline esp_image_header_t flash_load_rom_header (void)
 }
 
 #define IRAM_SECTION __attribute__((section(".iram1")))
+#if 0
 static void IRAM_SECTION update_flash_chip_size (uint32_t sz)
 {
   esp_rom_spiflash_config_param (
@@ -64,6 +69,11 @@ static uint32_t __attribute__((section(".iram1"))) flash_detect_size_byte(void)
   };
   return detected_size;
 #undef FLASH_BUFFER_SIZE_DETECT
+}
+#endif
+
+static uint32_t flash_detect_size_byte(void) {
+  return 4 << 20;
 }
 
 uint32_t flash_safe_get_size_byte(void)

@@ -1,7 +1,11 @@
 #ifndef __I2C_SW_MASTER_H__
 #define __I2C_SW_MASTER_H__
 
-#include "rom/ets_sys.h"
+#ifdef CONFIG_IDF_TARGET_ESP32C3
+#include "esp32c3/rom/ets_sys.h"
+#else
+#include "esp32/rom/ets_sys.h"
+#endif
 
 #define I2C_NUM_MAX 1
 
