@@ -3,8 +3,8 @@
 #include <stdlib.h>
 #include "platform.h"
 #include "lfs.h"
-#include "lfs_flashbd.h"
-#include "lfs_main.h"
+#include "littlefs_flashbd.h"
+#include "littlefs_main.h"
 
 /*
  * With the intoduction of a unified FatFS and SPIFFS support (#1397), the LITTLEFS

@@ -121,7 +121,7 @@
 // is not really maintained. LITTLEFS is a bit slower but has an active
 // maintainer.
 
-//#define BUILD_SPIFFS
+#define BUILD_SPIFFS
 #define SPIFFS_CACHE 1          // Enable if you use you SPIFFS in R/W mode
 //#define SPIFFS_MAX_FILESYSTEM_SIZE 0x20000
 #define SPIFFS_MAX_OPEN_FILES 4 // maximum number of open files for SPIFFS
@@ -129,7 +129,7 @@
 
 //#define BUILD_FATFS
 //
-#define BUILD_LITTLEFS
+//#define BUILD_LITTLEFS
 
 
 // The HTTPS stack requires client SSL to be enabled.  The SSL buffer size is

@@ -3,8 +3,11 @@
  *
  * Copyright (c) 2017, Arm Limited. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
+ * 
+ * This was heavily modified to convert this to talk to the nodemcu
+ * platform_flash layer.
  */
-#include "lfs_flashbd.h"
+#include "littlefs_flashbd.h"
 #include "platform.h"
 
 #ifdef LFS_YES_FLASHBD_TRACE

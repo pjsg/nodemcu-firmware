@@ -8,7 +8,7 @@
 
 #include <stdint.h>
 #include "vfs.h"
-#include "lfs_main.h"
+#include "littlefs_main.h"
 #include <string.h>
 
 #include <alloca.h>
