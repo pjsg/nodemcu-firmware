@@ -152,7 +152,7 @@ menu "NodeMCU modules"
             Includes the I2C module (recommended).
 
     config NODEMCU_CMODULE_I2S
-        depends on IDF_TARGET_ESP32
+        depends on IDF_TARGET_ESP32 || IDF_TARGET_ESP32S2 || IDF_TARGET_ESP32S3
         bool "I2S module"
         default "n"
         help
@@ -233,7 +233,7 @@ menu "NodeMCU modules"
             the battery backed memory.
 
     config NODEMCU_CMODULE_SDMMC
-        depends on IDF_TARGET_ESP32
+        depends on IDF_TARGET_ESP32 || IDF_TARGET_ESP32S3
         bool "SD-MMC module"
         default "n"
         help
@@ -278,7 +278,7 @@ menu "NodeMCU modules"
             Includes the timer module (recommended).
 
     config NODEMCU_CMODULE_TOUCH
-        depends on IDF_TARGET_ESP32
+        depends on IDF_TARGET_ESP32 || IDF_TARGET_ESP32S2 || IDF_TARGET_ESP32S3 
         bool "Touch module"
         default "n"
         help
