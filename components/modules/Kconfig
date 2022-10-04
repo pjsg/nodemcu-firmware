@@ -278,7 +278,7 @@ menu "NodeMCU modules"
             Includes the timer module (recommended).
 
     config NODEMCU_CMODULE_TOUCH
-        depends on IDF_TARGET_ESP32 || IDF_TARGET_ESP32S2 || IDF_TARGET_ESP32S3 
+        depends on IDF_TARGET_ESP32
         bool "Touch module"
         default "n"
         help

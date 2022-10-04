@@ -60,12 +60,10 @@ elseif(IDF_TARGET STREQUAL "esp32s2")
   list(APPEND module_srcs
     "dac.c"
     "i2s.c"
-    "touch.c"
   )
 elseif(IDF_TARGET STREQUAL "esp32s3")
   list(APPEND module_srcs
     "i2s.c"
-    "touch.c"
     "sdmmc.c"
   )
 elseif(IDF_TARGET STREQUAL "esp32c3")
