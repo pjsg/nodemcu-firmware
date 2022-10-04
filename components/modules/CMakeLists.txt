@@ -64,7 +64,6 @@ elseif(IDF_TARGET STREQUAL "esp32s2")
 elseif(IDF_TARGET STREQUAL "esp32s3")
   list(APPEND module_srcs
     "i2s.c"
-    "sdmmc.c"
   )
 elseif(IDF_TARGET STREQUAL "esp32c3")
   list(APPEND module_srcs

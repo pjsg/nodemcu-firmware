@@ -233,7 +233,7 @@ menu "NodeMCU modules"
             the battery backed memory.
 
     config NODEMCU_CMODULE_SDMMC
-        depends on IDF_TARGET_ESP32 || IDF_TARGET_ESP32S3
+        depends on IDF_TARGET_ESP32
         bool "SD-MMC module"
         default "n"
         help
