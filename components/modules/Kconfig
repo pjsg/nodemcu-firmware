@@ -270,6 +270,14 @@ menu "NodeMCU modules"
         help
             Includes the spi module.
 
+    config NODEMCU_CMODULE_STEPPER
+        bool "Stepper motor module"
+        select ESP_TIMER_SUPPORTS_ISR_DISPATCH_METHOD
+        default "n"
+        help
+            Includes the stepper motor driver module. This module provides driving of arbitrary signals
+	    to driver stepper motors.
+
     config NODEMCU_CMODULE_STRUCT
         bool "Struct module"
         default "n"
