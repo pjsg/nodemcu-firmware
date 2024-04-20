@@ -13,6 +13,8 @@
 #endif
 #include <esp_timer.h>
 
+#ifdef CONFIG_NODEMCU_CMODULE_STEPPER
+
 #define MAX_PINS  8
 
 typedef unsigned char uint8;
@@ -478,3 +480,5 @@ LUALIB_API int luaopen_stepper (lua_State *L) {
 }
 
 NODEMCU_MODULE(STEPPER, "stepper", stepper, luaopen_stepper);
+
+#endif
