@@ -23,7 +23,7 @@ Specifies the GPIO pins to use and the various patterns (phases) and timing info
 - `pins` The list of GPIO pins connected to the motor driver. There is a compile time limit on the number of pins (`stepper.MAX_PINS` -- currently set to 8)
 - `phases` The list of phases for a complete cycle. Each phase is a list of GPIO settings. The phases are run in the forwards direction for increasing step numbers.
 - `options` A table of options
-  - `stop` The GPIO pins are driven into this state after completing the movement.
+  - `idle` The GPIO pins are driven into this state after completing the movement.
   - `min` The minimum number of microseconds per phase. This is top speed
   - `max` The maximum number of microseconds per phase.
   - `accel` The number of phase steps used for acceleration from stop to required speed.
@@ -34,7 +34,7 @@ A stepper motor object.
 
 #### Example
 
-`motor = stepper.init({9, 10, 11, 12}, {{1, 0, 0, 0}, {0, 0, 1, 0}, {0, 1, 0, 0}, {0, 0, 0, 1}}, {max=100000, min=10000, accel=10, decel=10, end={0,0,0,0}})`
+`motor = stepper.init({9, 10, 11, 12}, {{1, 0, 0, 0}, {0, 0, 1, 0}, {0, 1, 0, 0}, {0, 0, 0, 1}}, {max=100000, min=10000, accel=10, decel=10, idle={0,0,0,0}})`
 
 ## motor:moveby()
 
@@ -69,6 +69,19 @@ callback (if any). The target position is modified to the new value. This means 
 #### Returns
 `nil`
 
+## motor:stop()
+
+This tries to stop the motor as quickly as possible.
+
+#### Syntax
+`motor:stop([abort])`
+
+#### Parameters
+
+- `abort` This is a boolean (default false). If True, then the deceleration is not performed and the pulse sequence is just stopped immediately.
+
+#### Returns
+`nil`
 
 ## motor:isrunning()
 
@@ -78,8 +91,8 @@ This returns a boolean which indicates if the motor is running and a number whic
 `motor:isrunning()`
 
 #### Returns
-`boolean`
-`position`
+`boolean`   True if the motor is running
+`position`  The current position. 
 
 ## motor.close()
 

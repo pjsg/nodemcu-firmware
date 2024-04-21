@@ -58,8 +58,10 @@ typedef struct {
 
   esp_timer_handle_t timer; 
 
-  PHASE *end_phase;
+  PHASE *idle_phase;
 } MOTOR;
+
+volatile bool update_in_progress = false;
 
 static task_handle_t motor_task_id;
 
@@ -87,7 +89,7 @@ static void timer_interrupt(void *arg) {
       phase = motor->phases + (position % phase_count);
       motor->state = RUNNING;
     } else if (motor->state == STOPPING) {
-      phase = motor->end_phase;
+      phase = motor->idle_phase;
       motor->state = STOPPED;
     } else {
       position += motor->direction;
@@ -103,7 +105,7 @@ static void timer_interrupt(void *arg) {
       phase = motor->phases + (position % phase_count);
       motor->step = step + 1;
 
-      if (step + 1 == end_step) {
+      if (step + 1 >= end_step) {
         motor->state = STOPPING;
       }
     }
@@ -195,11 +197,11 @@ static int stepper_init(lua_State *L) {
   }
 
   // Create the motor object
-  MOTOR *motor = (MOTOR *)lua_newuserdata(L, sizeof(MOTOR) + phase_count * sizeof(PHASE));
+  MOTOR *motor = (MOTOR *)lua_newuserdata(L, sizeof(MOTOR) + (phase_count + 1) * sizeof(PHASE));
   luaL_getmetatable(L, "motor");
   lua_setmetatable(L, -2);
 
-  memset(motor, 0, sizeof(MOTOR) + phase_count * sizeof(PHASE));
+  memset(motor, 0, sizeof(MOTOR) + (phase_count + 1) * sizeof(PHASE));
 
   // Initialize the motor object
   motor->pin_count = pin_count;
@@ -234,12 +236,12 @@ static int stepper_init(lua_State *L) {
   lua_pushnil(L);
   while (lua_next(L, 3) != 0) {
     const char *key = luaL_checkstring(L, -2);
-    if (strcmp(key, "stop") == 0) {
+    if (strcmp(key, "idle") == 0) {
       if (lua_istable(L, -1)) {
-        motor->end_phase = (PHASE *)lua_newuserdata(L, sizeof(PHASE));
+        motor->idle_phase = motor->phases + phase_count;
         for (int i = 0; i < pin_count; i++) {
           lua_rawgeti(L, -1, i + 1);
-          motor->end_phase->level[i] = luaL_checkinteger(L, -1);
+          motor->idle_phase->level[i] = luaL_checkinteger(L, -1);
           lua_pop(L, 1);
         }
       }
@@ -253,6 +255,18 @@ static int stepper_init(lua_State *L) {
       motor->decel = luaL_checkinteger(L, -1);
     }
     lua_pop(L, 1);
+  }
+
+  if (motor->min_step_time < 100 || motor->max_step_time < 100) {
+    return luaL_error(L, "Invalid min/max values");
+  }
+
+  if (motor->accel < 0 || motor->decel < 0) {
+    return luaL_error(L, "Invalid accel/decel values");
+  }
+
+  if (motor->min_step_time > motor->max_step_time) {
+    return luaL_error(L, "Invalid min/max values");
   }
 
   gpio_config_t config;
@@ -462,6 +476,9 @@ static int motor_destructor(lua_State *L) {
   // only time that we don't have a self_ref (or a cb_ref)
 
   set_gpio_to_input(motor);
+  if (motor->timer) {
+    esp_timer_delete(motor->timer);
+  } 
   return 0;
 }
 
@@ -469,9 +486,34 @@ static int motor_isrunning(lua_State *L) {
   MOTOR *motor = (MOTOR *)luaL_checkudata(L, 1, "motor");
 
   lua_pushboolean(L, motor->running);
-  lua_pushvalue(L, motor->position);
+  lua_pushinteger(L, motor->position);
 
   return 2;
+}
+
+static int motor_stop(lua_State *L) {
+  MOTOR *motor = (MOTOR *)luaL_checkudata(L, 1, "motor");
+
+  if (motor->running) {
+    motor->expected_end_position -= motor->pending_direction * motor->pending_end_step;
+    // check if first argument is true
+    if (lua_isboolean(L, 2) && lua_toboolean(L, 2)) {
+      motor->state = STOPPING;
+      motor->end_step = motor->step;
+      motor->expected_end_position = motor->position;
+    } else {
+      int new_end_step = motor->step + motor->decel;
+      if (new_end_step < motor->end_step) {
+        motor->expected_end_position -= motor->direction * (motor->end_step - new_end_step);
+        motor->end_step = new_end_step;
+      }
+    }
+
+    motor->pending_direction = 0;
+    motor->pending_end_step = 0;
+  }
+
+  return 0;
 }
 
 static int motor_tostring(lua_State *L) {
@@ -508,6 +550,7 @@ LROT_BEGIN(motor_map, NULL, LROT_MASK_GC_INDEX)
   LROT_FUNCENTRY(moveto, motor_moveto)
   LROT_FUNCENTRY( moveby, motor_moveby )
   LROT_FUNCENTRY( close, motor_close )
+  LROT_FUNCENTRY( stop, motor_stop )
   LROT_FUNCENTRY(isrunning, motor_isrunning)
 LROT_END(motor_map, NULL, LROT_MASK_GC_INDEX)
 
