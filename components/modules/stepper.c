@@ -34,6 +34,7 @@ typedef struct {
   bool running;
   bool closed;
   signed char direction;
+  signed char pending_direction;
   uint8 pin_count;
   uint8 pins[MAX_PINS];    
 
@@ -43,10 +44,12 @@ typedef struct {
   int self_ref;
   int cb_ref;
   int position;
+  int expected_end_position;
   int step;
   int end_step;
   int max_step_time;
   int min_step_time;
+  int pending_end_step;
 
   int accel;
   int decel;
@@ -299,6 +302,16 @@ static void set_gpio_to_input(MOTOR *motor) {
   motor->pin_count = 0;
 }
 
+static void resave_cb(lua_State *L, MOTOR *motor) {
+  luaL_unref2(L, LUA_REGISTRYINDEX, motor->cb_ref);
+  if (lua_isfunction(L, 3)) {
+    lua_pushvalue(L, 3);
+    motor->cb_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+  } else {
+    motor->cb_ref = LUA_NOREF;
+  }
+}
+
 static void start_motor(lua_State *L, MOTOR *motor, int steps) {
   if (motor->closed) {
     luaL_error(L, "Motor is closed");
@@ -343,6 +356,22 @@ static void end_motor(lua_State *L, MOTOR *motor) {
   luaL_unref(L, LUA_REGISTRYINDEX, cb_ref);
 } 
 
+static void adjust_pending_by(MOTOR *motor, int steps) {
+  signed char new_direction = steps < 0 ? -1 : 1;
+  if (motor->pending_direction == 0) {
+    motor->pending_direction = new_direction;
+    motor->pending_end_step = abs(steps);
+  } else if (motor->pending_direction == new_direction) {
+    motor->pending_end_step += abs(steps);
+  } else {
+    motor->pending_end_step -= abs(steps);
+    if (motor->pending_end_step < 0) {
+      motor->pending_direction = 2 - motor->pending_direction;
+      motor->pending_end_step = -motor->pending_end_step;
+    }
+  }
+}
+
 /*
     ## motor:moveto()
 
@@ -362,12 +391,14 @@ static int motor_moveto(lua_State *L) {
   MOTOR *motor = (MOTOR *)luaL_checkudata(L, 1, "motor");
   int position = luaL_checkinteger(L, 2);
 
-  if (motor->running) { 
-    return luaL_error(L, "Motor is already running");
+  motor->expected_end_position = position;
+
+  if (motor->running) {
+    resave_cb(L, motor);
+    adjust_pending_by(motor, position - motor->expected_end_position);
+  } else {
+    start_motor(L, motor, position - motor->position);
   }
-
-  start_motor(L, motor, position - motor->position);
-
   return 0;
 }
 
@@ -389,11 +420,13 @@ static int motor_moveby(lua_State *L) {
   MOTOR *motor = (MOTOR *)luaL_checkudata(L, 1, "motor");
   int steps = luaL_checkinteger(L, 2);
 
-  if (motor->running) { 
-    return luaL_error(L, "Motor is already running");
+  motor->expected_end_position += steps;
+  if (motor->running) {
+    resave_cb(L, motor);
+    adjust_pending_by(motor, steps);
+  } else {
+    start_motor(L, motor, steps);
   }
-
-  start_motor(L, motor, steps);  
 
   return 0;
 }
@@ -444,7 +477,9 @@ static int motor_isrunning(lua_State *L) {
 static int motor_tostring(lua_State *L) {
   MOTOR *motor = (MOTOR *)luaL_checkudata(L, 1, "motor");
 
-  lua_pushfstring(L, "Motor: %p, position %d, running %d, state %d, step %d of %d", motor, motor->position, motor->running, motor->state, motor->step, motor->end_step);
+  lua_pushfstring(L, "Motor: %p, position %d -> %d, running %d, state %d, step %d of %d. Pending steps %d", 
+    motor, motor->position, motor->expected_end_position, motor->running, 
+    motor->state, motor->step, motor->end_step, motor->pending_end_step * motor->pending_direction);
 
   return 1;
 }
@@ -453,7 +488,16 @@ static void motor_task(task_param_t param, task_prio_t prio) {
   MOTOR *motor = (MOTOR *)param;
 
   if (motor->running || motor->closed) {
-    end_motor(lua_getstate(), motor);
+    if (motor->pending_direction != 0 && !motor->closed) {
+      motor->direction = motor->pending_direction;
+      motor->step = 0;
+      motor->end_step = motor->pending_end_step;
+      motor->pending_direction = 0;
+      motor->state = STARTING;
+      timer_interrupt(motor);
+    } else {  
+      end_motor(lua_getstate(), motor);
+    }
   }
 }
 

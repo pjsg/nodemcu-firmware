@@ -38,7 +38,9 @@ A stepper motor object.
 
 ## motor:moveby()
 
-This drives the motor the given number of steps, using top speed if possible. The callback is invoked when the motor has stopped. Note that it is an error to call `moveby` when the motor is already moving. 
+This drives the motor the given number of steps, using top speed if possible. The callback is invoked when the motor has stopped. 
+Note that if `moveby` is called while the motor is already moving, then the current callback (if any) is removed and replaced with the new
+callback (if any). The distance is added.
 
 #### Syntax
 `motor:moveby(steps, [cb])`
@@ -53,7 +55,9 @@ This drives the motor the given number of steps, using top speed if possible. Th
 
 ## motor:moveto()
 
-This drives the motor a number of steps such that it ends on the given step, using top speed if possible. After initialization, the motor is considered to be at step 0. The callback is invoked when the motor has stopped. Note that it is an error to call `moveto` when the motor is already moving. 
+This drives the motor a number of steps such that it ends on the given step, using top speed if possible. After initialization, the motor is considered to be at step 0. The callback is invoked when the motor has stopped. 
+Note that if `moveto` is called while the motor is already moving, then the current callback (if any) is removed and replaced with the new
+callback (if any). The target position is modified to the new value. This means that a rapid sequence (assuming starting at 0) of `moveto(1000)` then `moveto(0)` will end up at zero and will not necessarily visit offset 1000.
 
 #### Syntax
 `motor:moveto(step, [cb])`
