@@ -13,9 +13,15 @@
 #endif
 #include <esp_timer.h>
 
-#ifdef CONFIG_NODEMCU_CMODULE_STEPPER
-
 #define MAX_PINS  8
+
+#ifdef CONFIG_ESP_TIMER_SUPPORTS_ISR_DISPATCH_METHOD
+// ESP_TIMER_ISR is the preferred dispatch method for the timer and is 
+// enabled by the Kconfig when you select the Stepper module.
+#define TIMER_TO_USE    ESP_TIMER_ISR
+#else
+#define TIMER_TO_USE    ESP_TIMER_TASK
+#endif
 
 typedef unsigned char uint8;
 
@@ -285,12 +291,10 @@ static int stepper_init(lua_State *L) {
   }
 
   // Create the timer
-  esp_timer_create_args_t timer_args = {
-    .callback = timer_interrupt,
-    .arg = motor,
-    .dispatch_method = ESP_TIMER_ISR,
-    .name = "stepper"
-  };
+  esp_timer_create_args_t timer_args = {.callback = timer_interrupt,
+                                        .arg = motor,
+                                        .dispatch_method = TIMER_TO_USE,
+                                        .name = "stepper"};
 
   esp_timer_create(&timer_args, &motor->timer);
 
@@ -568,4 +572,3 @@ LUALIB_API int luaopen_stepper (lua_State *L) {
 
 NODEMCU_MODULE(STEPPER, "stepper", stepper, luaopen_stepper);
 
-#endif
